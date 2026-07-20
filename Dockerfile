@@ -38,7 +38,7 @@ ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH
 RUN echo '. "$HOME/.nix-profile/etc/profile.d/nix.sh"' >> ~/.bashrc
 
 COPY --chown=nixuser:nixuser \
-    config/nix-packages.txt \
+    nix-packages.txt \
     /tmp/nix-packages.txt
 
 RUN . "$HOME/.nix-profile/etc/profile.d/nix.sh" && \
@@ -47,13 +47,8 @@ RUN . "$HOME/.nix-profile/etc/profile.d/nix.sh" && \
     fi && \
     rm -f /tmp/nix-packages.txt
 
-COPY --chown=nixuser:nixuser \
-    scripts/test-toolbox.sh \
-    /usr/local/bin/test-toolbox
-
-RUN chmod +x /usr/local/bin/test-toolbox
-
 USER root
+
 RUN rm -rf /var/cache/apk/*
 
 USER nixuser
