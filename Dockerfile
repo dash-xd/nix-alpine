@@ -38,14 +38,14 @@ ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH
 RUN echo '. "$HOME/.nix-profile/etc/profile.d/nix.sh"' >> ~/.bashrc
 
 COPY --chown=nixuser:nixuser \
-    nix-packages.txt \
-    /tmp/nix-packages.txt
+    nixpkgs.txt \
+    /tmp/nixpkgs.txt
 
 RUN . "$HOME/.nix-profile/etc/profile.d/nix.sh" && \
-    if [ -s /tmp/nix-packages.txt ]; then \
-        nix profile install $(< /tmp/nix-packages.txt); \
+    if [ -s /tmp/nixpkgs.txt ]; then \
+        nix profile install $(< /tmp/nixpkgs.txt); \
     fi && \
-    rm -f /tmp/nix-packages.txt
+    rm -f /tmp/nixpkgs.txt
 
 USER root
 
