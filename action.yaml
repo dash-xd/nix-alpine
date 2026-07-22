@@ -2,7 +2,6 @@ name: Ensure Toolbox Image
 description: Restore or build Nix toolbox OCI image
 
 inputs:
-
   image-name:
     required: false
     default: nix-toolbox:latest
@@ -15,9 +14,9 @@ inputs:
     required: false
     default: .
 
-  nixpkgs-path:
+  pkgs-path:
     required: false
-    default: nixpkgs.txt
+    default: pkgs.txt
 
   packages:
     required: false
@@ -26,25 +25,24 @@ inputs:
     required: false
 
 outputs:
-
   cache-hit:
     value: ${{ steps.cache.outputs.cache-hit }}
     
 runs:
   using: composite
   steps:
-    - name: Override nixpkgs
+    - name: Override pkgs
       shell: bash
       run: |
         if [ -n "${{ inputs.packages-url }}" ]; then
           curl \
             -fsSL \
             "${{ inputs.packages-url }}" \
-            > "${{ inputs.toolbox-path }}/${{ inputs.nixpkgs-path }}"
+            > "${{ inputs.toolbox-path }}/${{ inputs.pkgs-path }}"
         elif [ -n "${{ inputs.packages }}" ]; then
           printf "%s\n" \
             "${{ inputs.packages }}" \
-            > "${{ inputs.toolbox-path }}/${{ inputs.nixpkgs-path }}"
+            > "${{ inputs.toolbox-path }}/${{ inputs.pkgs-path }}"
 
         fi
 
@@ -58,7 +56,7 @@ runs:
             hashFiles(
               format('{0}/Dockerfile', inputs.toolbox-path),
               format('{0}/config/nix.conf', inputs.toolbox-path),
-              format('{0}/{1}', inputs.toolbox-path, inputs.nixpkgs-path)
+              format('{0}/{1}', inputs.toolbox-path, inputs.pkgs-path)
             )
           }}
 
