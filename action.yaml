@@ -43,7 +43,6 @@ runs:
           printf "%s\n" \
             "${{ inputs.packages }}" \
             > "${{ inputs.toolbox-path }}/${{ inputs.pkgs-path }}"
-
         fi
 
     - name: Restore toolbox image
