@@ -1,0 +1,75 @@
+name: Ensure Toolbox Image
+description: Restore or build Nix toolbox OCI image
+
+inputs:
+
+  image-name:
+    required: false
+    default: nix-toolbox:latest
+
+  cache-key:
+    required: false
+    default: nix-toolbox
+
+  toolbox-path:
+    required: false
+    default: .
+
+  nixpkgs-path:
+    required: false
+    default: nixpkgs.txt
+
+  packages:
+    required: false
+
+  packages-url:
+    required: false
+
+outputs:
+
+  cache-hit:
+    value: ${{ steps.cache.outputs.cache-hit }}
+    
+runs:
+  using: composite
+  steps:
+    - name: Override nixpkgs
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.packages-url }}" ]; then
+          curl \
+            -fsSL \
+            "${{ inputs.packages-url }}" \
+            > "${{ inputs.toolbox-path }}/${{ inputs.nixpkgs-path }}"
+        elif [ -n "${{ inputs.packages }}" ]; then
+          printf "%s\n" \
+            "${{ inputs.packages }}" \
+            > "${{ inputs.toolbox-path }}/${{ inputs.nixpkgs-path }}"
+
+        fi
+
+    - name: Restore toolbox image
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: nix-toolbox.tar.gz
+        key: |
+          ${{ inputs.cache-key }}-${{ runner.arch }}-${{
+            hashFiles(
+              format('{0}/Dockerfile', inputs.toolbox-path),
+              format('{0}/config/nix.conf', inputs.toolbox-path),
+              format('{0}/{1}', inputs.toolbox-path, inputs.nixpkgs-path)
+            )
+          }}
+
+    - name: Build toolbox image
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.toolbox-path }}
+      run: |
+        docker build \
+          -t "${{ inputs.image-name }}" \
+          .
+
+        docker save "${{ inputs.image-name }}" \
+          | gzip > "$GITHUB_WORKSPACE/nix-toolbox.tar.gz"
