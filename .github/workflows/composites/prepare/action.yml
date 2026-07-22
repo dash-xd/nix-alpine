@@ -1,37 +1,48 @@
 name: Prepare nixpkgs
 description: Prepare nixpkgs.txt input
+
 inputs:
+  nixpkgs_path:
+    required: false
+    default: nixpkgs.txt
+
   packages:
     required: false
+
   packages_url:
     required: false
 
+  cache_key:
+    required: false
+    default: nixpkgs
+    
 runs:
   using: composite
   steps:
     - name: Restore nixpkgs cache
       uses: actions/cache@v4
       with:
-        path: nixpkgs.txt
+        path: ${{ inputs.nixpkgs_path }}
         key: |
-          nixpkgs-${{
-            hashFiles('nixpkgs.txt')
+          ${{ inputs.cache_key }}-${{
+            hashFiles(inputs.nixpkgs_path)
           }}
 
-    - name: Override nixpkgs.txt
+    - name: Override nixpkgs file
       shell: bash
       run: |
         if [ -n "${{ inputs.packages_url }}" ]; then
           curl \
             -fsSL \
             "${{ inputs.packages_url }}" \
-            > nixpkgs.txt
-      
+            > "${{ inputs.nixpkgs_path }}"
+
         elif [ -n "${{ inputs.packages }}" ]; then
+
           printf "%s\n" \
             "${{ inputs.packages }}" \
-            > nixpkgs.txt
+            > "${{ inputs.nixpkgs_path }}"
 
-        elif [ ! -f nixpkgs.txt ]; then
-          touch nixpkgs.txt
+        elif [ ! -f "${{ inputs.nixpkgs_path }}" ]; then
+          touch "${{ inputs.nixpkgs_path }}"
         fi
