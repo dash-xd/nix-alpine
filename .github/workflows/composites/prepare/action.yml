@@ -1,48 +1,98 @@
-name: Prepare nixpkgs
-description: Prepare nixpkgs.txt input
+name: Run Nix Toolbox
+
+description: Bootstrap, cache, and run commands inside Nix toolbox container
 
 inputs:
-  nixpkgs_path:
-    required: false
-    default: nixpkgs.txt
+  command:
+    required: true
+    description: Command to execute
 
-  packages:
+  toolbox_repository:
     required: false
+    default: org/nix-toolbox
+    description: Repository containing Dockerfile and toolbox definition
 
-  packages_url:
+  nixpkgs:
     required: false
+    description: Inline nix package list
 
-  cache_key:
+  nixpkgs_url:
     required: false
-    default: nixpkgs
-    
+    description: URL containing nix package list
+
+  image_name:
+    required: false
+    default: nix-toolbox:latest
+
+  cache_prefix:
+    required: false
+    default: nix-toolbox
+
 runs:
   using: composite
   steps:
-    - name: Restore nixpkgs cache
-      uses: actions/cache@v4
+    - name: Checkout nix toolbox
+      uses: actions/checkout@v4
       with:
-        path: ${{ inputs.nixpkgs_path }}
-        key: |
-          ${{ inputs.cache_key }}-${{
-            hashFiles(inputs.nixpkgs_path)
-          }}
+        repository: ${{ inputs.toolbox_repository }}
+        path: .nix-toolbox
 
-    - name: Override nixpkgs file
+
+    - name: Override nixpkgs.txt
       shell: bash
       run: |
-        if [ -n "${{ inputs.packages_url }}" ]; then
+        if [ -n "${{ inputs.nixpkgs_url }}" ]; then
+
           curl \
             -fsSL \
-            "${{ inputs.packages_url }}" \
-            > "${{ inputs.nixpkgs_path }}"
+            "${{ inputs.nixpkgs_url }}" \
+            > .nix-toolbox/nixpkgs.txt
 
-        elif [ -n "${{ inputs.packages }}" ]; then
-
+        elif [ -n "${{ inputs.nixpkgs }}" ]; then
           printf "%s\n" \
-            "${{ inputs.packages }}" \
-            > "${{ inputs.nixpkgs_path }}"
-
-        elif [ ! -f "${{ inputs.nixpkgs_path }}" ]; then
-          touch "${{ inputs.nixpkgs_path }}"
+            "${{ inputs.nixpkgs }}" \
+            > .nix-toolbox/nixpkgs.txt
         fi
+
+    - name: Restore toolbox image cache
+      id: cache
+      uses: actions/cache@v4
+
+      with:
+        path: nix-toolbox.tar.gz
+
+        key: |
+          ${{ inputs.cache_prefix }}-${{ runner.arch }}-${{
+            hashFiles(
+              '.nix-toolbox/Dockerfile',
+              '.nix-toolbox/config/nix.conf',
+              '.nix-toolbox/nixpkgs.txt'
+            )
+          }}
+
+    - name: Build toolbox image
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: .nix-toolbox
+      run: |
+        docker build \
+          -t "${{ inputs.image_name }}" \
+          .
+        docker save "${{ inputs.image_name }}" \
+          | gzip > ../nix-toolbox.tar.gz
+
+    - name: Load toolbox image
+      shell: bash
+      run: |
+        docker load \
+          < nix-toolbox.tar.gz
+
+    - name: Run command
+      shell: bash
+      run: |
+        docker run \
+          --rm \
+          -v "$PWD:/workspace" \
+          -w /workspace \
+          "${{ inputs.image_name }}" \
+          bash -c "${{ inputs.command }}"
