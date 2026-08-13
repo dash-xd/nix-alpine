@@ -47,7 +47,7 @@ runs:
 
     - name: Restore toolbox image
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: nix-toolbox.tar.gz
         key: |
@@ -75,3 +75,10 @@ runs:
       if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
       run: docker load -i nix-toolbox.tar.gz
+
+    - name: Save toolbox image
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: nix-toolbox.tar.gz
+        key: ${{ steps.cache.outputs.cache-primary-key }}
