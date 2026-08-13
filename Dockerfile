@@ -33,7 +33,8 @@ COPY --chown=nixuser:nixuser \
 
 RUN curl -L https://nixos.org/nix/install | bash -s -- --no-daemon
 
-ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH
+ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH \
+    NIXPKGS_ALLOW_UNFREE=1
 
 RUN echo '. "$HOME/.nix-profile/etc/profile.d/nix.sh"' >> ~/.bashrc
 
