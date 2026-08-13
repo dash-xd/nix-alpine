@@ -70,3 +70,8 @@ runs:
 
         docker save "${{ inputs.image-name }}" \
           | gzip > "$GITHUB_WORKSPACE/nix-toolbox.tar.gz"
+
+    - name: Load cached toolbox image
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: docker load -i nix-toolbox.tar.gz
