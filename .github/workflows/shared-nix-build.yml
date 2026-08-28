@@ -58,18 +58,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: dash-xd/nix-alpine
-          ref: d17153df83336fccd83d8b002c4bda69bbfb0035
+          ref: a3351eae7c3741863a6e420fa0c6675a19623ceb
           path: .deps/nix-alpine
 
       - name: Prepare Nix builder image
-        uses: dash-xd/nix-alpine@d17153df83336fccd83d8b002c4bda69bbfb0035
+        uses: dash-xd/nix-alpine@a3351eae7c3741863a6e420fa0c6675a19623ceb
         with:
           image-name: ${{ inputs.image-name }}
           cache-key: nix-alpine-shared-builder
           toolbox-path: .deps/nix-alpine
 
       - name: Build with local and shared caches
-        uses: dash-xd/nix-alpine/volume-cache@d17153df83336fccd83d8b002c4bda69bbfb0035
+        uses: dash-xd/nix-alpine/volume-cache@a3351eae7c3741863a6e420fa0c6675a19623ceb
         with:
           image-name: ${{ inputs.image-name }}
           cache-key: ${{ inputs.cache-key }}
