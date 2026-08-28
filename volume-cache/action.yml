@@ -99,7 +99,7 @@ runs:
           experimental-features = nix-command flakes
           sandbox = false
           filter-syscalls = false
-          build-users-group =
+          build-users-group = nixbld
         XDG_CACHE_HOME: /home/nixuser/.cache
       run: |
         set -euo pipefail
@@ -113,7 +113,7 @@ runs:
           -v "$GITHUB_WORKSPACE:/workspace" \
           -w "/workspace/${{ inputs.workdir }}" \
           "${{ inputs.image-name }}" \
-          bash -c 'rm -rf /homeless-shelter; eval "$NIX_ALPINE_BUILDER_COMMAND"'
+          bash -c 'eval "$NIX_ALPINE_BUILDER_COMMAND"'
 
     - name: Export /nix named volume
       if: always() && steps.restore.outputs.cache-hit != 'true'
