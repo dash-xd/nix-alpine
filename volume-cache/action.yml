@@ -95,11 +95,18 @@ runs:
       shell: bash
       env:
         NIX_ALPINE_BUILDER_COMMAND: ${{ inputs.command }}
+        NIX_CONFIG: |
+          experimental-features = nix-command flakes
+          sandbox = false
+          filter-syscalls = false
+        XDG_CACHE_HOME: /home/nixuser/.cache
       run: |
         set -euo pipefail
         docker run --rm \
           --user root \
           -e NIX_ALPINE_BUILDER_COMMAND \
+          -e NIX_CONFIG \
+          -e XDG_CACHE_HOME \
           -v "${{ inputs.store-volume }}:/nix" \
           -v "${{ inputs.user-cache-volume }}:/home/nixuser/.cache/nix" \
           -v "$GITHUB_WORKSPACE:/workspace" \
