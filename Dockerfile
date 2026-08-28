@@ -43,7 +43,12 @@ COPY --chown=nixuser:nixuser \
     /tmp/pkgs.txt
 
 RUN . "$HOME/.nix-profile/etc/profile.d/nix.sh" && \
-    nix-env -f '<nixpkgs>' -i $(cat /tmp/pkgs.txt) && \
+    packages="$(sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' /tmp/pkgs.txt | tr '\n' ' ')" && \
+    if [ -n "$packages" ]; then \
+      nix-channel --add https://nixos.org/channels/nixos-26.05 nixpkgs && \
+      nix-channel --update && \
+      nix-env -f '<nixpkgs>' -i $packages; \
+    fi && \
     rm -f /tmp/pkgs.txt
 
 USER root
