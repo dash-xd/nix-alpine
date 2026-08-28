@@ -31,6 +31,10 @@ inputs:
     description: S3-compatible endpoint. Use storage.googleapis.com for GCS interoperability.
     required: false
     default: storage.googleapis.com
+  shared-cache-scheme:
+    description: S3-compatible endpoint scheme.
+    required: false
+    default: https
   shared-cache-region:
     description: S3 signing region. GCS interoperability accepts auto.
     required: false
@@ -129,6 +133,7 @@ runs:
       env:
         BUCKET: ${{ inputs.shared-cache-bucket }}
         ENDPOINT: ${{ inputs.shared-cache-endpoint }}
+        SCHEME: ${{ inputs.shared-cache-scheme }}
         REGION: ${{ inputs.shared-cache-region }}
         ACCESS_KEY_ID: ${{ inputs.shared-cache-access-key-id }}
         SECRET_ACCESS_KEY: ${{ inputs.shared-cache-secret-access-key }}
@@ -169,7 +174,7 @@ runs:
         echo "::add-mask::$ACCESS_KEY_ID"
         echo "::add-mask::$SECRET_ACCESS_KEY"
         echo "enabled=true" >> "$GITHUB_OUTPUT"
-        echo "url=s3://$BUCKET?scheme=https&endpoint=$ENDPOINT&region=$REGION" >> "$GITHUB_OUTPUT"
+        echo "url=s3://$BUCKET?scheme=$SCHEME&endpoint=$ENDPOINT&region=$REGION" >> "$GITHUB_OUTPUT"
 
     - name: Run builder
       shell: bash
