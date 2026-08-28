@@ -99,6 +99,7 @@ runs:
           experimental-features = nix-command flakes
           sandbox = false
           filter-syscalls = false
+          build-users-group =
         XDG_CACHE_HOME: /home/nixuser/.cache
       run: |
         set -euo pipefail
