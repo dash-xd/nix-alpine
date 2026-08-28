@@ -76,3 +76,66 @@ nix-store --generate-binary-cache-key \
 
 The private key is security-sensitive: possession lets a party sign arbitrary
 store paths that participating builders will trust.
+
+
+## Cross-repository artifact relay
+
+The named-volume cache can also be exported as a normal GitHub Actions
+artifact. This is intentionally separate from the signed Nix binary cache.
+
+Set:
+
+```yaml
+artifact-name: nix-volume-cache-my-app
+artifact-retention-days: "30"
+```
+
+The artifact contains:
+
+```text
+nix-store.tar.gz
+nix-user-cache.tar.gz
+manifest.json
+```
+
+The manifest records:
+
+```json
+{
+  "schema": 1,
+  "artifact_name": "nix-volume-cache-my-app",
+  "source_repo": "owner/repo",
+  "source_sha": "...",
+  "source_run_id": "...",
+  "cache_key": "...",
+  "cache_restore_prefix": "..."
+}
+```
+
+A consumer in another repository may use a user/App token with Actions read
+access to download the artifact through the GitHub API, validate the manifest,
+and then run `actions/cache/save`. Because the save occurs in the consumer
+workflow, the resulting cache belongs to the consumer repository.
+
+This yields lazy eventual convergence:
+
+```text
+repo A /nix cache
+      |
+      v
+Actions artifact
+      |
+ GitHub API
+      |
+      v
+repo B workflow
+      |
+      v
+repo B Actions cache
+      |
+      v
+repo B named /nix volume
+```
+
+Artifacts are transport snapshots, not authoritative state. The Nix store's
+content-addressing still determines object identity.
