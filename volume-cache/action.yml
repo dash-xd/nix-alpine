@@ -23,6 +23,38 @@ inputs:
   user-cache-volume:
     required: false
     default: nix-alpine-user-cache
+  shared-cache-bucket:
+    description: Optional S3/S3-compatible bucket name for the cross-repository Nix binary cache.
+    required: false
+    default: ""
+  shared-cache-endpoint:
+    description: S3-compatible endpoint. Use storage.googleapis.com for GCS interoperability.
+    required: false
+    default: storage.googleapis.com
+  shared-cache-region:
+    description: S3 signing region. GCS interoperability accepts auto.
+    required: false
+    default: auto
+  shared-cache-access-key-id:
+    description: HMAC access key ID for the shared object store.
+    required: false
+    default: ""
+  shared-cache-secret-access-key:
+    description: HMAC secret access key for the shared object store.
+    required: false
+    default: ""
+  shared-cache-public-key:
+    description: Nix binary-cache public signing key (name:base64).
+    required: false
+    default: ""
+  shared-cache-private-key:
+    description: Nix binary-cache private signing key used only by publishing builders.
+    required: false
+    default: ""
+  shared-cache-publish-paths:
+    description: Space-separated result paths to publish after a successful build.
+    required: false
+    default: result
 
 outputs:
   cache-hit:
@@ -91,29 +123,130 @@ runs:
           "${{ inputs.image-name }}" \
           -c 'rm -rf /volume/* /volume/.[!.]* /volume/..?* 2>/dev/null || true; tar -xzf /cache/nix-user-cache.tar.gz -C /volume'
 
+    - name: Prepare shared binary cache
+      id: shared-cache
+      shell: bash
+      env:
+        BUCKET: ${{ inputs.shared-cache-bucket }}
+        ENDPOINT: ${{ inputs.shared-cache-endpoint }}
+        REGION: ${{ inputs.shared-cache-region }}
+        ACCESS_KEY_ID: ${{ inputs.shared-cache-access-key-id }}
+        SECRET_ACCESS_KEY: ${{ inputs.shared-cache-secret-access-key }}
+        PUBLIC_KEY: ${{ inputs.shared-cache-public-key }}
+        PRIVATE_KEY: ${{ inputs.shared-cache-private-key }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$BUCKET" ]]; then
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        for pair in \
+          "shared-cache-access-key-id:$ACCESS_KEY_ID" \
+          "shared-cache-secret-access-key:$SECRET_ACCESS_KEY" \
+          "shared-cache-public-key:$PUBLIC_KEY"; do
+          name="${pair%%:*}"
+          value="${pair#*:}"
+          if [[ -z "$value" ]]; then
+            echo "::error::$name is required when shared-cache-bucket is set"
+            exit 1
+          fi
+        done
+
+        cache_dir="$RUNNER_TEMP/nix-shared-cache"
+        mkdir -p "$cache_dir"
+        chmod 700 "$cache_dir"
+
+        if [[ -n "$PRIVATE_KEY" ]]; then
+          printf '%s\n' "$PRIVATE_KEY" > "$cache_dir/private-key"
+          chmod 600 "$cache_dir/private-key"
+          echo "::add-mask::$PRIVATE_KEY"
+          echo "publisher=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "publisher=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        echo "::add-mask::$ACCESS_KEY_ID"
+        echo "::add-mask::$SECRET_ACCESS_KEY"
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
+        echo "url=s3://$BUCKET?scheme=https&endpoint=$ENDPOINT&region=$REGION" >> "$GITHUB_OUTPUT"
+
     - name: Run builder
       shell: bash
       env:
         NIX_ALPINE_BUILDER_COMMAND: ${{ inputs.command }}
-        NIX_CONFIG: |
-          experimental-features = nix-command flakes
-          sandbox = false
-          filter-syscalls = false
-          build-users-group = nixbld
+        NIX_SHARED_CACHE_ENABLED: ${{ steps.shared-cache.outputs.enabled }}
+        NIX_SHARED_CACHE_URL: ${{ steps.shared-cache.outputs.url }}
+        NIX_SHARED_CACHE_PUBLIC_KEY: ${{ inputs.shared-cache-public-key }}
+        NIX_SHARED_CACHE_PUBLISHER: ${{ steps.shared-cache.outputs.publisher }}
+        NIX_SHARED_CACHE_PUBLISH_PATHS: ${{ inputs.shared-cache-publish-paths }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.shared-cache-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.shared-cache-secret-access-key }}
+        AWS_EC2_METADATA_DISABLED: "true"
         XDG_CACHE_HOME: /home/nixuser/.cache
       run: |
         set -euo pipefail
-        docker run --rm \
-          --user root \
-          -e NIX_ALPINE_BUILDER_COMMAND \
-          -e NIX_CONFIG \
-          -e XDG_CACHE_HOME \
-          -v "${{ inputs.store-volume }}:/nix" \
-          -v "${{ inputs.user-cache-volume }}:/home/nixuser/.cache/nix" \
-          -v "$GITHUB_WORKSPACE:/workspace" \
-          -w "/workspace/${{ inputs.workdir }}" \
+
+        NIX_CONFIG="$(cat <<'EOF'
+        experimental-features = nix-command flakes
+        sandbox = false
+        filter-syscalls = false
+        build-users-group = nixbld
+        EOF
+        )"
+
+        if [[ "$NIX_SHARED_CACHE_ENABLED" == "true" ]]; then
+          NIX_CONFIG="$NIX_CONFIG
+        extra-substituters = $NIX_SHARED_CACHE_URL
+        extra-trusted-public-keys = $NIX_SHARED_CACHE_PUBLIC_KEY"
+          if [[ "$NIX_SHARED_CACHE_PUBLISHER" == "true" ]]; then
+            NIX_CONFIG="$NIX_CONFIG
+        secret-key-files = /run/nix-shared-cache/private-key"
+          fi
+        fi
+        export NIX_CONFIG
+
+        docker_args=(
+          --rm
+          --user root
+          -e NIX_ALPINE_BUILDER_COMMAND
+          -e NIX_CONFIG
+          -e XDG_CACHE_HOME
+          -e NIX_SHARED_CACHE_ENABLED
+          -e NIX_SHARED_CACHE_URL
+          -e NIX_SHARED_CACHE_PUBLISHER
+          -e NIX_SHARED_CACHE_PUBLISH_PATHS
+          -e AWS_ACCESS_KEY_ID
+          -e AWS_SECRET_ACCESS_KEY
+          -e AWS_EC2_METADATA_DISABLED
+          -v "${{ inputs.store-volume }}:/nix"
+          -v "${{ inputs.user-cache-volume }}:/home/nixuser/.cache/nix"
+          -v "$GITHUB_WORKSPACE:/workspace"
+          -w "/workspace/${{ inputs.workdir }}"
+        )
+
+        if [[ "$NIX_SHARED_CACHE_PUBLISHER" == "true" ]]; then
+          docker_args+=(
+            -v "$RUNNER_TEMP/nix-shared-cache:/run/nix-shared-cache:ro"
+          )
+        fi
+
+        docker run "${docker_args[@]}" \
           "${{ inputs.image-name }}" \
-          bash -c 'eval "$NIX_ALPINE_BUILDER_COMMAND"'
+          bash -c '
+            set -euo pipefail
+            eval "$NIX_ALPINE_BUILDER_COMMAND"
+
+            if [[ "$NIX_SHARED_CACHE_ENABLED" == "true" &&
+                  "$NIX_SHARED_CACHE_PUBLISHER" == "true" ]]; then
+              destination="$NIX_SHARED_CACHE_URL&secret-key=/run/nix-shared-cache/private-key"
+              for target in $NIX_SHARED_CACHE_PUBLISH_PATHS; do
+                resolved="$(readlink -f "$target")"
+                test -e "$resolved"
+                nix copy --to "$destination" "$resolved"
+              done
+            fi
+          '
 
     - name: Export /nix named volume
       if: always() && steps.restore.outputs.cache-hit != 'true'
