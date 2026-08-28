@@ -105,7 +105,7 @@ runs:
           -v "$GITHUB_WORKSPACE:/workspace" \
           -w "/workspace/${{ inputs.workdir }}" \
           "${{ inputs.image-name }}" \
-          bash -lc 'eval "$NIX_ALPINE_BUILDER_COMMAND"'
+          bash -c 'eval "$NIX_ALPINE_BUILDER_COMMAND"'
 
     - name: Export /nix named volume
       if: always() && steps.restore.outputs.cache-hit != 'true'
