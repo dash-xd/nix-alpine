@@ -1,12 +1,17 @@
 name: Run Nix Builder With Cached Volumes
-description: Run the nix-alpine builder with named /nix and user-cache volumes restored/saved through GitHub Actions cache.
+description: Run nix-alpine with cacheable named /nix and user-cache volumes.
 
 inputs:
   image-name:
     required: false
     default: nix-toolbox:latest
   cache-key:
+    description: Exact cache identity, normally including the current source hash.
     required: true
+  cache-restore-prefix:
+    description: Optional logical prefix used to reuse the newest prior Nix store across source hashes.
+    required: false
+    default: ""
   workdir:
     required: false
     default: .
@@ -22,6 +27,8 @@ inputs:
 outputs:
   cache-hit:
     value: ${{ steps.restore.outputs.cache-hit }}
+  cache-usable:
+    value: ${{ steps.cache-state.outputs.usable }}
 
 runs:
   using: composite
@@ -35,13 +42,17 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: .nix-volume-cache
-        key: ${{ inputs.cache-key }}-volumes-v2-${{ runner.os }}-${{ runner.arch }}
+        key: volumes-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+        restore-keys: |
+          volumes-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-restore-prefix }}
 
     - name: Validate restored volume archives
       id: cache-state
       shell: bash
       run: |
-        if [[ -s "$GITHUB_WORKSPACE/.nix-volume-cache/nix-store.tar.gz" &&               -s "$GITHUB_WORKSPACE/.nix-volume-cache/nix-user-cache.tar.gz" ]]; then
+        set -euo pipefail
+        if [[ -s "$GITHUB_WORKSPACE/.nix-volume-cache/nix-store.tar.gz" &&
+              -s "$GITHUB_WORKSPACE/.nix-volume-cache/nix-user-cache.tar.gz" ]]; then
           echo "usable=true" >> "$GITHUB_OUTPUT"
         else
           echo "usable=false" >> "$GITHUB_OUTPUT"
@@ -59,44 +70,72 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        archive="$GITHUB_WORKSPACE/.nix-volume-cache/nix-store.tar.gz"
-        if [[ -f "$archive" ]]; then
-          docker run --rm             -v "${{ inputs.store-volume }}:/volume"             -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache:ro"             --entrypoint sh             "${{ inputs.image-name }}"             -c 'rm -rf /volume/* /volume/.[!.]* /volume/..?* 2>/dev/null || true; tar -xzf /cache/nix-store.tar.gz -C /volume'
-        fi
+        docker run --rm \
+          --user root \
+          -v "${{ inputs.store-volume }}:/volume" \
+          -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache:ro" \
+          --entrypoint sh \
+          "${{ inputs.image-name }}" \
+          -c 'rm -rf /volume/* /volume/.[!.]* /volume/..?* 2>/dev/null || true; tar -xzf /cache/nix-store.tar.gz -C /volume'
 
     - name: Restore Nix user cache volume
       if: steps.cache-state.outputs.usable == 'true'
       shell: bash
       run: |
         set -euo pipefail
-        archive="$GITHUB_WORKSPACE/.nix-volume-cache/nix-user-cache.tar.gz"
-        if [[ -f "$archive" ]]; then
-          docker run --rm             -v "${{ inputs.user-cache-volume }}:/volume"             -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache:ro"             --entrypoint sh             "${{ inputs.image-name }}"             -c 'rm -rf /volume/* /volume/.[!.]* /volume/..?* 2>/dev/null || true; tar -xzf /cache/nix-user-cache.tar.gz -C /volume'
-        fi
+        docker run --rm \
+          --user root \
+          -v "${{ inputs.user-cache-volume }}:/volume" \
+          -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache:ro" \
+          --entrypoint sh \
+          "${{ inputs.image-name }}" \
+          -c 'rm -rf /volume/* /volume/.[!.]* /volume/..?* 2>/dev/null || true; tar -xzf /cache/nix-user-cache.tar.gz -C /volume'
 
     - name: Run builder
       shell: bash
+      env:
+        NIX_ALPINE_BUILDER_COMMAND: ${{ inputs.command }}
       run: |
         set -euo pipefail
-        docker run --rm           -v "${{ inputs.store-volume }}:/nix"           -v "${{ inputs.user-cache-volume }}:/home/nixuser/.cache/nix"           -v "$GITHUB_WORKSPACE:/workspace"           -w "/workspace/${{ inputs.workdir }}"           "${{ inputs.image-name }}"           bash -lc '${{ inputs.command }}'
+        docker run --rm \
+          --user root \
+          -e NIX_ALPINE_BUILDER_COMMAND \
+          -v "${{ inputs.store-volume }}:/nix" \
+          -v "${{ inputs.user-cache-volume }}:/home/nixuser/.cache/nix" \
+          -v "$GITHUB_WORKSPACE:/workspace" \
+          -w "/workspace/${{ inputs.workdir }}" \
+          "${{ inputs.image-name }}" \
+          bash -lc 'eval "$NIX_ALPINE_BUILDER_COMMAND"'
 
     - name: Export /nix named volume
-      if: always() && steps.cache-state.outputs.usable != 'true'
+      if: always() && steps.restore.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
-        docker run --rm           -v "${{ inputs.store-volume }}:/volume:ro"           -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache"           --entrypoint sh           "${{ inputs.image-name }}"           -c 'tar -czf /cache/nix-store.tar.gz -C /volume .'
+        docker run --rm \
+          --user root \
+          -v "${{ inputs.store-volume }}:/volume:ro" \
+          -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache" \
+          --entrypoint sh \
+          "${{ inputs.image-name }}" \
+          -c 'tar -czf /cache/nix-store.tar.gz -C /volume .'
 
     - name: Export Nix user cache named volume
-      if: always() && steps.cache-state.outputs.usable != 'true'
+      if: always() && steps.restore.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
-        docker run --rm           -v "${{ inputs.user-cache-volume }}:/volume:ro"           -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache"           --entrypoint sh           "${{ inputs.image-name }}"           -c 'tar -czf /cache/nix-user-cache.tar.gz -C /volume .'
+        docker run --rm \
+          --user root \
+          -v "${{ inputs.user-cache-volume }}:/volume:ro" \
+          -v "$GITHUB_WORKSPACE/.nix-volume-cache:/cache" \
+          --entrypoint sh \
+          "${{ inputs.image-name }}" \
+          -c 'tar -czf /cache/nix-user-cache.tar.gz -C /volume .'
 
     - name: Save named-volume archives
-      if: always() && steps.cache-state.outputs.usable != 'true'
+      if: always() && steps.restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: .nix-volume-cache
-        key: ${{ inputs.cache-key }}-volumes-v2-${{ runner.os }}-${{ runner.arch }}
+        key: volumes-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
