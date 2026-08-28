@@ -17,6 +17,14 @@ RUN addgroup -g 1000 nixuser && \
         -G nixuser \
         -s /bin/bash \
         nixuser && \
+    addgroup -S -g 30000 nixbld && \
+    for i in $(seq 1 10); do \
+      adduser -S -D -H \
+        -u $((30000 + i)) \
+        -G nixbld \
+        -s /sbin/nologin \
+        "nixbld$i"; \
+    done && \
     echo "nixuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     mkdir -p -m 0755 /nix && \
     chown nixuser:nixuser /nix
