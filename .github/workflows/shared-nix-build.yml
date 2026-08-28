@@ -1,0 +1,88 @@
+name: Shared Nix build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: false
+        default: blacksmith-2vcpu-ubuntu-2404
+      image-name:
+        type: string
+        required: false
+        default: nix-alpine:shared-builder
+      cache-key:
+        type: string
+        required: true
+      cache-restore-prefix:
+        type: string
+        required: false
+        default: ""
+      workdir:
+        type: string
+        required: false
+        default: .
+      command:
+        type: string
+        required: true
+      publish-paths:
+        type: string
+        required: false
+        default: result
+      shared-cache-bucket:
+        type: string
+        required: false
+        default: ""
+      shared-cache-public-key:
+        type: string
+        required: false
+        default: ""
+    secrets:
+      shared-cache-access-key-id:
+        required: false
+      shared-cache-secret-access-key:
+        required: false
+      shared-cache-private-key:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout nix-alpine builder
+        uses: actions/checkout@v4
+        with:
+          repository: dash-xd/nix-alpine
+          ref: d17153df83336fccd83d8b002c4bda69bbfb0035
+          path: .deps/nix-alpine
+
+      - name: Prepare Nix builder image
+        uses: dash-xd/nix-alpine@d17153df83336fccd83d8b002c4bda69bbfb0035
+        with:
+          image-name: ${{ inputs.image-name }}
+          cache-key: nix-alpine-shared-builder
+          toolbox-path: .deps/nix-alpine
+
+      - name: Build with local and shared caches
+        uses: dash-xd/nix-alpine/volume-cache@d17153df83336fccd83d8b002c4bda69bbfb0035
+        with:
+          image-name: ${{ inputs.image-name }}
+          cache-key: ${{ inputs.cache-key }}
+          cache-restore-prefix: ${{ inputs.cache-restore-prefix }}
+          workdir: ${{ inputs.workdir }}
+          store-volume: shared-nix-store
+          user-cache-volume: shared-nix-user-cache
+          shared-cache-bucket: ${{ inputs.shared-cache-bucket }}
+          shared-cache-endpoint: storage.googleapis.com
+          shared-cache-region: auto
+          shared-cache-access-key-id: ${{ secrets.shared-cache-access-key-id }}
+          shared-cache-secret-access-key: ${{ secrets.shared-cache-secret-access-key }}
+          shared-cache-public-key: ${{ inputs.shared-cache-public-key }}
+          shared-cache-private-key: ${{ secrets.shared-cache-private-key }}
+          shared-cache-publish-paths: ${{ inputs.publish-paths }}
+          command: ${{ inputs.command }}
