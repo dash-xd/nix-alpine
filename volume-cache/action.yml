@@ -59,6 +59,14 @@ inputs:
     description: Space-separated result paths to publish after a successful build.
     required: false
     default: result
+  artifact-name:
+    description: Optional artifact name for exporting the compressed named-volume cache to other repositories.
+    required: false
+    default: ""
+  artifact-retention-days:
+    description: Retention for the exported cross-repository cache artifact.
+    required: false
+    default: "14"
 
 outputs:
   cache-hit:
@@ -285,3 +293,12 @@ runs:
       with:
         path: .nix-volume-cache
         key: volumes-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+
+    - name: Publish named-volume cache artifact
+      if: always() && inputs.artifact-name != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: .nix-volume-cache/
+        retention-days: ${{ inputs.artifact-retention-days }}
+        if-no-files-found: error
