@@ -330,3 +330,4 @@ runs:
         path: .nix-volume-cache/
         retention-days: ${{ inputs.artifact-retention-days }}
         if-no-files-found: error
+        include-hidden-files: true
