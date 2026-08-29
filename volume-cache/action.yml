@@ -17,6 +17,14 @@ inputs:
     default: .
   command:
     required: true
+  command-timeout:
+    description: Maximum time allowed for the builder command, using GNU timeout syntax.
+    required: false
+    default: "10m"
+  publish-timeout:
+    description: Maximum time allowed for each shared-cache nix copy, using GNU timeout syntax.
+    required: false
+    default: "5m"
   store-volume:
     required: false
     default: nix-alpine-store
@@ -193,6 +201,8 @@ runs:
         NIX_SHARED_CACHE_PUBLIC_KEY: ${{ inputs.shared-cache-public-key }}
         NIX_SHARED_CACHE_PUBLISHER: ${{ steps.shared-cache.outputs.publisher }}
         NIX_SHARED_CACHE_PUBLISH_PATHS: ${{ inputs.shared-cache-publish-paths }}
+        NIX_ALPINE_COMMAND_TIMEOUT: ${{ inputs.command-timeout }}
+        NIX_SHARED_CACHE_PUBLISH_TIMEOUT: ${{ inputs.publish-timeout }}
         AWS_ACCESS_KEY_ID: ${{ inputs.shared-cache-access-key-id }}
         AWS_SECRET_ACCESS_KEY: ${{ inputs.shared-cache-secret-access-key }}
         AWS_EC2_METADATA_DISABLED: "true"
@@ -229,6 +239,8 @@ runs:
           -e NIX_SHARED_CACHE_URL
           -e NIX_SHARED_CACHE_PUBLISHER
           -e NIX_SHARED_CACHE_PUBLISH_PATHS
+          -e NIX_ALPINE_COMMAND_TIMEOUT
+          -e NIX_SHARED_CACHE_PUBLISH_TIMEOUT
           -e AWS_ACCESS_KEY_ID
           -e AWS_SECRET_ACCESS_KEY
           -e AWS_EC2_METADATA_DISABLED
@@ -248,7 +260,8 @@ runs:
           "${{ inputs.image-name }}" \
           bash -c '
             set -euo pipefail
-            eval "$NIX_ALPINE_BUILDER_COMMAND"
+            echo "::notice::running builder command with timeout $NIX_ALPINE_COMMAND_TIMEOUT"
+            timeout --foreground "$NIX_ALPINE_COMMAND_TIMEOUT" bash -lc "$NIX_ALPINE_BUILDER_COMMAND"
 
             if [[ "$NIX_SHARED_CACHE_ENABLED" == "true" &&
                   "$NIX_SHARED_CACHE_PUBLISHER" == "true" ]]; then
@@ -256,7 +269,8 @@ runs:
               for target in $NIX_SHARED_CACHE_PUBLISH_PATHS; do
                 resolved="$(readlink -f "$target")"
                 test -e "$resolved"
-                nix copy --to "$destination" "$resolved"
+                echo "::notice::publishing $resolved to shared Nix cache with timeout $NIX_SHARED_CACHE_PUBLISH_TIMEOUT"
+                timeout --foreground "$NIX_SHARED_CACHE_PUBLISH_TIMEOUT" nix copy --to "$destination" "$resolved"
               done
             fi
           '
