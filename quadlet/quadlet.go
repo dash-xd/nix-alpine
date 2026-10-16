@@ -30,13 +30,19 @@ func install(args []string) error {
 	fs := flag.NewFlagSet("nix-alpine install", flag.ContinueOnError)
 	name := fs.String("name", "", "logical application/scope")
 	flake := fs.String("flake", "", "host flake directory")
+	workspace := fs.String("workspace", "", "host workspace root for idle mode")
+	idle := fs.Bool("idle", false, "keep a workspace container running")
 	target := fs.String("target", "#default", "flake installable suffix")
 	image := fs.String("image", defaultImage, "OCI image")
 	root := fs.String("quadlet-dir", "", "override user Quadlet directory (disables daemon-reload)")
 	if err := fs.Parse(args); err != nil { return err }
 	if !validName(*name) { return fmt.Errorf("invalid --name %q", *name) }
 
-	abs, err := filepath.Abs(*flake)
+	if *idle && *workspace == "" { return fmt.Errorf("--idle requires --workspace") }
+	if !*idle && *flake == "" { return fmt.Errorf("--flake is required without --idle") }
+	mount := *flake
+	if *idle { mount = *workspace }
+	abs, err := filepath.Abs(mount)
 	if err != nil { return err }
 	st, err := os.Stat(abs)
 	if err != nil { return err }
@@ -53,7 +59,7 @@ func install(args []string) error {
 	base := "nix-alpine-" + *name
 	files := map[string]string{
 		filepath.Join(dir, base+"-store.volume"): renderVolume(base),
-		filepath.Join(dir, base+".container"):    renderContainer(*name, abs, *target, *image),
+		filepath.Join(dir, base+".container"):    renderContainer(*name, abs, *target, *image, *idle),
 	}
 	for dst, body := range files {
 		tmp := dst + ".tmp"
@@ -77,7 +83,12 @@ func renderVolume(base string) string {
 	return fmt.Sprintf("[Unit]\nDescription=Persistent Nix store for %s\n\n[Volume]\nVolumeName=%s-store\n", base, base)
 }
 
-func renderContainer(name, flake, target, image string) string {
+func renderContainer(name, flake, target, image string, idle bool) string {
+	if idle {
+		base := "nix-alpine-" + name
+		return fmt.Sprintf("[Unit]\nDescription=nix-alpine workspace (%s)\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspaces\nWorkingDir=/workspaces\nPodmanArgs=--init\nExec=sleep infinity\n\n[Service]\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake)
+	}
+
 	base := "nix-alpine-" + name
 	return fmt.Sprintf("[Unit]\nDescription=nix-alpine single-user flake runner (%s)\nAfter=network-online.target\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspace:ro\nWorkingDir=/workspace\nPodmanArgs=--init\nExec=nix run /workspace%s\n\n[Service]\nRestart=on-failure\nSuccessExitStatus=143\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake, target)
 }
