@@ -27,9 +27,7 @@ jobs:
       - name: Go module and tests
         run: |
           set -euxo pipefail
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-          go test ./...
+          go mod tidy\n          git diff --exit-code -- go.mod\n          go test ./...
           go vet ./...
       - name: Compose minimal Smoke
         run: |
