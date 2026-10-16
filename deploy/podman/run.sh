@@ -5,5 +5,5 @@ podman volume create nix-alpine-store >/dev/null
 podman volume create nix-alpine-socket >/dev/null
 exec podman run -d --name nix-alpine-owner \
   -v nix-alpine-store:/nix \
-  -v nix-alpine-socket:/run/nix \
+  -v nix-alpine-socket:/nix/var/nix/daemon-socket \
   "$image" owner
