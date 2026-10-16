@@ -1,0 +1,121 @@
+package quadlet
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const defaultImage = "localhost/nix-toolbox:latest"
+
+func Run(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: nix-alpine <install|start|stop|status> [options]")
+	}
+	switch args[0] {
+	case "install":
+		return install(args[1:])
+	case "start", "stop", "status":
+		return systemctl(args[0], args[1:])
+	default:
+		return fmt.Errorf("unknown nix-alpine operation %q", args[0])
+	}
+}
+
+func install(args []string) error {
+	fs := flag.NewFlagSet("nix-alpine install", flag.ContinueOnError)
+	name := fs.String("name", "", "logical application/scope")
+	flake := fs.String("flake", "", "host flake directory")
+	workspace := fs.String("workspace", "", "host workspace root for idle mode")
+	idle := fs.Bool("idle", false, "keep a workspace container running")
+	target := fs.String("target", "#default", "flake installable suffix")
+	image := fs.String("image", defaultImage, "OCI image")
+	root := fs.String("quadlet-dir", "", "override user Quadlet directory (disables daemon-reload)")
+	if err := fs.Parse(args); err != nil { return err }
+	if !validName(*name) { return fmt.Errorf("invalid --name %q", *name) }
+
+	if *idle && *workspace == "" { return fmt.Errorf("--idle requires --workspace") }
+	if !*idle && *flake == "" { return fmt.Errorf("--flake is required without --idle") }
+	mount := *flake
+	if *idle { mount = *workspace }
+	abs, err := filepath.Abs(mount)
+	if err != nil { return err }
+	st, err := os.Stat(abs)
+	if err != nil { return err }
+	if !st.IsDir() { return fmt.Errorf("flake path is not a directory: %s", abs) }
+
+	dir := *root
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil { return err }
+		dir = filepath.Join(home, ".config", "containers", "systemd")
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil { return err }
+
+	base := "nix-alpine-" + *name
+	files := map[string]string{
+		filepath.Join(dir, base+"-store.volume"): renderVolume(base),
+		filepath.Join(dir, base+".container"):    renderContainer(*name, abs, *target, *image, *idle),
+	}
+	for dst, body := range files {
+		tmp := dst + ".tmp"
+		if err := os.WriteFile(tmp, []byte(body), 0644); err != nil { return err }
+		if err := os.Rename(tmp, dst); err != nil { return err }
+		fmt.Println(dst)
+	}
+	if *root == "" {
+		if err := reloadUserSystemd(); err != nil { return err }
+	}
+	return nil
+}
+
+func reloadUserSystemd() error {
+	c := exec.Command("systemctl", "--user", "daemon-reload")
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	return c.Run()
+}
+
+func renderVolume(base string) string {
+	return fmt.Sprintf("[Unit]\nDescription=Persistent Nix store for %s\n\n[Volume]\nVolumeName=%s-store\n", base, base)
+}
+
+func renderContainer(name, flake, target, image string, idle bool) string {
+	if idle {
+		base := "nix-alpine-" + name
+		return fmt.Sprintf("[Unit]\nDescription=nix-alpine workspace (%s)\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspaces\nWorkingDir=/workspaces\nPodmanArgs=--init\nExec=sleep infinity\n\n[Service]\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake)
+	}
+
+	base := "nix-alpine-" + name
+	return fmt.Sprintf("[Unit]\nDescription=nix-alpine single-user flake runner (%s)\nAfter=network-online.target\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspace:ro\nWorkingDir=/workspace\nPodmanArgs=--init\nExec=nix run /workspace%s\n\n[Service]\nRestart=on-failure\nSuccessExitStatus=143\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake, target)
+}
+
+func systemctl(op string, args []string) error {
+	if len(args) != 1 || !validName(args[0]) { return fmt.Errorf("usage: nix-alpine %s NAME", op) }
+	unit := "nix-alpine-" + args[0] + ".service"
+	c := exec.Command("systemctl", "--user", op, unit)
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if err := c.Run(); err != nil { return err }
+	if op != "stop" { return nil }
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("systemctl", "--user", "show", "-p", "ActiveState", "--value", unit).Output()
+		if err != nil { return err }
+		state := strings.TrimSpace(string(out))
+		if state == "inactive" || state == "failed" { return nil }
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for %s to stop", unit)
+}
+
+func validName(s string) bool {
+	if s == "" { return false }
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_.-", r)) { return false }
+	}
+	return true
+}

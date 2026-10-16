@@ -1,0 +1,179 @@
+name: Single-user Nix store qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/smoke-single-user-component
+  pull_request:
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+
+      - name: Go component checks
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go test ./...
+          go vet ./...
+          go build -o /tmp/smoke-nix-alpine ./cmd/smoke-nix-alpine
+          /tmp/smoke-nix-alpine commands | grep -Fx nix-alpine
+
+      - name: Generate scoped Quadlets
+        run: |
+          mkdir -p /tmp/quadlets /tmp/service-flake
+          cat > /tmp/service-flake/flake.nix <<'EOF'
+          {
+            description = "nix-alpine systemd qualification";
+            outputs = { self }: {
+              apps.x86_64-linux.default = {
+                type = "app";
+                program = "${self}/run";
+              };
+            };
+          }
+          EOF
+          cat > /tmp/service-flake/run <<'EOF'
+          #!/bin/sh
+          exec sleep infinity
+          EOF
+          chmod +x /tmp/service-flake/run
+          /tmp/smoke-nix-alpine nix-alpine install \
+            --name qualify \
+            --flake /tmp/service-flake \
+            --quadlet-dir /tmp/quadlets
+          grep -Fx 'VolumeName=nix-alpine-qualify-store' /tmp/quadlets/nix-alpine-qualify-store.volume
+          grep -Fx 'Volume=nix-alpine-qualify-store.volume:/nix' /tmp/quadlets/nix-alpine-qualify.container
+          grep -Fx 'PodmanArgs=--init' /tmp/quadlets/nix-alpine-qualify.container
+          grep -Fx 'SuccessExitStatus=143' /tmp/quadlets/nix-alpine-qualify.container
+          ! grep -E 'daemon|daemon-socket|-home\.volume' /tmp/quadlets/nix-alpine-qualify.container
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman info
+
+      - name: Build single-user Nix-Alpine image
+        run: podman build -t localhost/nix-toolbox:latest .
+
+      - name: Qualify first-mount copy-up and store reuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume=nix-alpine-qualification-store
+          first=nix-alpine-qualification-first
+          second=nix-alpine-qualification-second
+          trap 'podman rm -f "$first" "$second" >/dev/null 2>&1 || true; podman volume rm "$volume" >/dev/null 2>&1 || true' EXIT
+
+          # The image has a complete single-user Nix installation in /nix.
+          image_store_count="$(podman run --rm localhost/nix-toolbox:latest sh -c 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          test "$image_store_count" -gt 0
+
+          podman volume create "$volume"
+
+          # First attachment must copy the image's /nix tree into the empty named volume.
+          podman create --name "$first" \
+            --user 1000:1000 \
+            -v "$volume:/nix" \
+            localhost/nix-toolbox:latest \
+            sh -c 'test -x "$HOME/.nix-profile/bin/nix" && test -d /nix/store && nix --version' >/dev/null
+          podman start -a "$first"
+
+          copied_store_count="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          test "$copied_store_count" -ge "$image_store_count"
+
+          # Exercise store/database mutation through single-user Nix and retain a sentinel store path.
+          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c "nix store add-file /etc/alpine-release")"
+          test -n "$store_path"
+          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest test -r "$store_path"
+
+          # Remove the original container, create a replacement, and prove the same store is reusable.
+          podman rm "$first"
+          podman create --name "$second" \
+            --user 1000:1000 \
+            -v "$volume:/nix" \
+            localhost/nix-toolbox:latest \
+            sh -c "test -r '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
+          podman start -a "$second"
+
+          # Verify executable ownership/access and the Nix DB from the replacement container.
+          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c \
+            'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --no-trust --all'
+
+      - name: Qualify Smoke through user systemd
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          export XDG_RUNTIME_DIR="/run/user/$uid"
+          sudo loginctl enable-linger "$USER" || true
+          sudo mkdir -p "$XDG_RUNTIME_DIR"
+          sudo chown "$USER:$USER" "$XDG_RUNTIME_DIR"
+
+          # GitHub-hosted runners do not start a user manager for the runner account.
+          # Start one explicitly, then exercise only Smoke's public lifecycle commands.
+          systemd --user --unit=basic.target >/tmp/nix-alpine-user-systemd.log 2>&1 &
+          manager_pid=$!
+          trap 'kill "$manager_pid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            systemctl --user is-system-running >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          # Exercise the real install path: Smoke writes the user Quadlets and
+          # performs systemctl --user daemon-reload itself.
+          /tmp/smoke-nix-alpine nix-alpine install \
+            --name qualify \
+            --flake /tmp/service-flake
+          test -f "$HOME/.config/containers/systemd/nix-alpine-qualify.container"
+          test -f "$HOME/.config/containers/systemd/nix-alpine-qualify-store.volume"
+          systemctl --user cat nix-alpine-qualify.service >/dev/null
+
+          /tmp/smoke-nix-alpine nix-alpine start qualify
+          /tmp/smoke-nix-alpine nix-alpine status qualify
+          systemctl --user show -p LoadState --value nix-alpine-qualify.service | grep -Fx loaded
+
+          # systemd/Podman being active only proves the container started; wait until
+          # nix run has realized and entered the long-running flake application.
+          for i in $(seq 1 120); do
+            if podman exec nix-alpine-qualify sh -c 'pidof sleep >/dev/null' >/dev/null 2>&1; then
+              break
+            fi
+            test "$i" -lt 120 || {
+              podman logs nix-alpine-qualify || true
+              exit 1
+            }
+            sleep 1
+          done
+
+          /tmp/smoke-nix-alpine nix-alpine stop qualify
+          for i in $(seq 1 20); do
+            state="$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)"
+            case "$state" in
+              inactive) break ;;
+              deactivating) sleep 1 ;;
+              *) echo "unexpected post-stop state: $state" >&2; systemctl --user status nix-alpine-qualify.service --no-pager || true; exit 1 ;;
+            esac
+          done
+          test "$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)" = inactive
+
+      - name: Quadlet generator accepts generated units
+        run: |
+          if command -v /usr/lib/systemd/system-generators/podman-system-generator >/dev/null; then
+            mkdir -p "$HOME/.config/containers/systemd"
+            cp /tmp/quadlets/* "$HOME/.config/containers/systemd/"
+            mkdir -p /tmp/generated
+            /usr/lib/systemd/system-generators/podman-system-generator --user /tmp/generated
+            test -f /tmp/generated/nix-alpine-qualify.service
+          else
+            echo "Podman package has no Quadlet generator at expected path; direct Podman qualification already passed."
+          fi
