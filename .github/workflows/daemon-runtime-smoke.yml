@@ -26,7 +26,7 @@ jobs:
           docker volume create nix-alpine-socket
           docker run -d --name nix-alpine-owner \
             -v nix-alpine-store:/nix \
-            -v nix-alpine-socket:/run/nix \
+            -v nix-alpine-socket:/nix/var/nix/daemon-socket \
             nix-alpine:daemon owner
           for i in $(seq 1 30); do
             if docker exec nix-alpine-owner nix-alpine healthcheck; then exit 0; fi
@@ -40,7 +40,7 @@ jobs:
           for i in 1 2; do
             docker run --rm --user 0 \
               -v nix-alpine-store:/nix:ro \
-              -v nix-alpine-socket:/run/nix \
+              -v nix-alpine-socket:/nix/var/nix/daemon-socket \
               -v "$PWD/examples/smoke-flake:/workspace:ro" \
               nix-alpine:daemon client nix build --no-write-lock-file /workspace#default --no-link
           done
@@ -48,7 +48,7 @@ jobs:
         run: |
           docker run --rm --user 0 \
             -v nix-alpine-store:/nix:ro \
-            -v nix-alpine-socket:/run/nix \
+            -v nix-alpine-socket:/nix/var/nix/daemon-socket \
             -v "$PWD/examples/smoke-flake:/workspace:ro" \
             nix-alpine:daemon client nix build --no-write-lock-file /workspace#image --no-link
       - name: Restart owner and verify store
