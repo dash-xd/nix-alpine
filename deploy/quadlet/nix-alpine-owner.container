@@ -1,0 +1,12 @@
+[Unit]
+Description=nix-alpine store owner
+[Container]
+Image=localhost/nix-alpine:daemon
+ContainerName=nix-alpine-owner
+Volume=nix-alpine-store.volume:/nix
+Volume=nix-alpine-socket.volume:/nix/var/nix/daemon-socket
+Exec=owner
+[Service]
+Restart=on-failure
+[Install]
+WantedBy=default.target

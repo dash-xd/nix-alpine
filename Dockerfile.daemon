@@ -1,0 +1,20 @@
+# Experimental daemon-backed variant. Preserve Dockerfile and the existing Actions.
+FROM nix-toolbox:latest
+USER root
+# A mounted empty /nix hides the installation in the base image.
+# Keep a seed copy outside /nix for first-time volume initialization.
+RUN mkdir -p /opt/nix-alpine/store-seed /etc/nix /usr/local/bin \
+ && cp -a /nix/. /opt/nix-alpine/store-seed/
+COPY runtime/ /opt/nix-alpine/runtime/
+RUN chmod +x /opt/nix-alpine/runtime/* \
+ && ln -s /opt/nix-alpine/runtime/entrypoint /usr/local/bin/nix-alpine \
+ && printf '%s\n' \
+    'experimental-features = nix-command flakes' \
+    'build-users-group = nixbld' \
+    'sandbox = false' \
+    'filter-syscalls = false' \
+    'trusted-users = root' \
+    > /etc/nix/nix.conf
+ENV PATH=/nix/var/nix/profiles/default/bin:/home/nixuser/.nix-profile/bin:$PATH
+ENTRYPOINT ["/usr/local/bin/nix-alpine"]
+CMD ["owner"]

@@ -1,0 +1,63 @@
+name: Run Nix Daemon Client
+description: Run a Nix command against an ephemeral owner using the shared generic runtime.
+inputs:
+  image-name:
+    description: Prebuilt daemon-capable nix-alpine image.
+    required: false
+    default: nix-alpine:daemon
+  command:
+    description: Shell command to execute in the Nix client (typically nix build).
+    required: true
+  workdir:
+    description: Working directory relative to GITHUB_WORKSPACE.
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - name: Run isolated owner and client
+      shell: bash
+      env:
+        NIX_ALPINE_IMAGE: ${{ inputs.image-name }}
+        NIX_ALPINE_COMMAND: ${{ inputs.command }}
+        NIX_ALPINE_WORKDIR: ${{ inputs.workdir }}
+      run: |
+        set -euo pipefail
+        # One owner per action invocation; ephemeral named volumes are deliberately
+        # distinct from the legacy volume-cache action's state.
+        owner="nix-alpine-owner-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+        store="${owner}-store"
+        socket="${owner}-socket"
+        cleanup() {
+          docker rm -f "$owner" >/dev/null 2>&1 || true
+          docker volume rm "$socket" >/dev/null 2>&1 || true
+          docker volume rm "$store" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+        docker volume create "$store" >/dev/null
+        docker volume create "$socket" >/dev/null
+        docker run -d --name "$owner" \
+          -v "$store:/nix" -v "$socket:/nix/var/nix/daemon-socket" \
+          "$NIX_ALPINE_IMAGE" owner >/dev/null
+        ready=false
+        for i in $(seq 1 30); do
+          if docker exec "$owner" nix-alpine healthcheck >/dev/null 2>&1; then
+            ready=true
+            break
+          fi
+          if ! docker inspect -f '{{.State.Running}}' "$owner" | grep -qx true; then
+            break
+          fi
+          sleep 2
+        done
+        if [[ "$ready" != true ]]; then
+          docker logs "$owner" >&2
+          exit 1
+        fi
+        docker run --rm --user 0 \
+          -e NIX_ALPINE_COMMAND \
+          -v "$store:/nix:ro" \
+          -v "$socket:/nix/var/nix/daemon-socket" \
+          -v "$GITHUB_WORKSPACE:/workspace:ro" \
+          -w "/workspace/$NIX_ALPINE_WORKDIR" \
+          "$NIX_ALPINE_IMAGE" client bash -lc 'exec bash -lc "$NIX_ALPINE_COMMAND"'

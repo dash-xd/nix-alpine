@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+test "$(id -u)" -eq 0 || { echo "owner requires root" >&2; exit 1; }
+if [ ! -e /nix/var/nix/db/db.sqlite ]; then
+  /opt/nix-alpine/runtime/init-store
+fi
+test -x /nix/var/nix/profiles/default/bin/nix-daemon || command -v nix-daemon >/dev/null
+test -d /nix/store
+test -d /nix/var/nix/db
+mkdir -p /nix/var/nix/daemon-socket
+# This socket is privileged. Mount only into authorized build clients.
+exec nix-daemon
