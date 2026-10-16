@@ -7,6 +7,6 @@ fi
 test -x /nix/var/nix/profiles/default/bin/nix-daemon || command -v nix-daemon >/dev/null
 test -d /nix/store
 test -d /nix/var/nix/db
-mkdir -p /run/nix
+mkdir -p /nix/var/nix/daemon-socket
 # This socket is privileged. Mount only into authorized build clients.
 exec nix-daemon
