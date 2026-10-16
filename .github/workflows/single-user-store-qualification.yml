@@ -88,7 +88,7 @@ jobs:
 
           # Verify executable ownership/access and the Nix DB from the replacement container.
           podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c \
-            'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --all'
+            'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --no-trust --all'
 
       - name: Quadlet generator accepts generated units
         run: |
