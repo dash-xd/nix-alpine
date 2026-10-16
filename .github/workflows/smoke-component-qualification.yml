@@ -1,0 +1,60 @@
+name: Smoke Nix-Alpine qualification
+on:
+  push:
+    branches: [codex/smoke-quadlet-component]
+  pull_request:
+    paths:
+      - go.mod
+      - go.sum
+      - smoke/**
+      - quadlet/**
+      - cmd/smoke-nix-alpine/**
+      - Dockerfile.daemon
+      - runtime/**
+      - deploy/quadlet/**
+      - examples/smoke-flake/**
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Go module and tests
+        run: |
+          set -euxo pipefail
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go test ./...
+          go vet ./...
+      - name: Compose minimal Smoke
+        run: |
+          set -euxo pipefail
+          go build -o "$RUNNER_TEMP/smoke-nix-alpine" ./cmd/smoke-nix-alpine
+          "$RUNNER_TEMP/smoke-nix-alpine" commands | grep -qx 'nix-alpine'
+          mkdir -p "$RUNNER_TEMP/quadlets"
+          "$RUNNER_TEMP/smoke-nix-alpine" nix-alpine install --name qualification --flake "$PWD/examples/smoke-flake" --target '#default' --quadlet-dir "$RUNNER_TEMP/quadlets"
+          grep -F 'Volume=nix-alpine-qualification-store.volume:/nix' "$RUNNER_TEMP/quadlets/nix-alpine-qualification.container"
+      - name: Build daemon image
+        run: |
+          docker build -t nix-toolbox:qualification .
+          docker build -f Dockerfile.daemon -t nix-alpine:daemon .
+      - name: Rootless Podman runtime
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman info
+          NIX_ALPINE_IMAGE=localhost/nix-alpine:daemon bash deploy/podman/run.sh
+          podman run --rm --user 0 -v nix-alpine-store:/nix:ro -v nix-alpine-socket:/nix/var/nix/daemon-socket -v "$PWD/examples/smoke-flake:/workspace:ro" localhost/nix-alpine:daemon client nix build /workspace#default --no-link
+      - name: Quadlet syntax generation
+        run: |
+          set -euxo pipefail
+          mkdir -p "$HOME/.config/containers/systemd"
+          cp deploy/quadlet/*.volume "$HOME/.config/containers/systemd/"
+          "$RUNNER_TEMP/smoke-nix-alpine" nix-alpine install --name qualification --flake "$PWD/examples/smoke-flake" --target '#default'
+          /usr/libexec/podman/quadlet -dryrun -user 2>/dev/null | grep -F 'nix-alpine-qualification'
