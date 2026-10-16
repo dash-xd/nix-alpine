@@ -67,3 +67,15 @@ func TestReloadTargetsUserManager(t *testing.T) {
 		t.Fatalf("unexpected systemctl reload: %q", got)
 	}
 }
+
+func TestIdleWorkspaceInstall(t *testing.T) {
+ root := t.TempDir()
+ out := filepath.Join(root, "units")
+ if err := install([]string{"--name","dev","--workspace",root,"--idle","--quadlet-dir",out}); err != nil { t.Fatal(err) }
+ b, err := os.ReadFile(filepath.Join(out,"nix-alpine-dev.container"))
+ if err != nil { t.Fatal(err) }
+ for _, s := range []string{"Volume="+root+":/workspaces","Volume=nix-alpine-dev-store.volume:/nix","Exec=sleep infinity"} {
+  if !strings.Contains(string(b),s) { t.Fatalf("missing %s: %s",s,b) }
+ }
+ if strings.Contains(string(b),"Exec=nix run") { t.Fatal("idle container runs flake") }
+}
