@@ -83,7 +83,7 @@ func renderContainer(name, flake, target, image string) string {
 
 func systemctl(op string, args []string) error {
 	if len(args) != 1 || !validName(args[0]) { return fmt.Errorf("usage: nix-alpine %s NAME", op) }
-	c := exec.Command("systemctl", "--user", op, "nix-alpine-"+args[0]+".service")
+	systemctlArgs := []string{"--user", op}\n\tif op == "stop" { systemctlArgs = append(systemctlArgs, "--wait") }\n\tsystemctlArgs = append(systemctlArgs, "nix-alpine-"+args[0]+".service")\n\tc := exec.Command("systemctl", systemctlArgs...)
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	return c.Run()
 }
