@@ -28,10 +28,25 @@ jobs:
 
       - name: Generate scoped Quadlets
         run: |
-          mkdir -p /tmp/quadlets
+          mkdir -p /tmp/quadlets /tmp/service-flake
+          cat > /tmp/service-flake/flake.nix <<'EOF'
+          {
+            description = "nix-alpine systemd qualification";
+            inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+            outputs = { self, nixpkgs }: let
+              system = "x86_64-linux";
+              pkgs = import nixpkgs { inherit system; };
+            in {
+              packages.${system}.default = pkgs.writeShellApplication {
+                name = "nix-alpine-qualification";
+                text = "exec sleep infinity";
+              };
+            };
+          }
+          EOF
           /tmp/smoke-nix-alpine nix-alpine install \
             --name qualify \
-            --flake "$PWD" \
+            --flake /tmp/service-flake \
             --quadlet-dir /tmp/quadlets
           grep -Fx 'VolumeName=nix-alpine-qualify-store' /tmp/quadlets/nix-alpine-qualify-store.volume
           grep -Fx 'Volume=nix-alpine-qualify-store.volume:/nix' /tmp/quadlets/nix-alpine-qualify.container
