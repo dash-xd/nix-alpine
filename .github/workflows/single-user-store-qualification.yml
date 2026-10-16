@@ -118,9 +118,6 @@ jobs:
           sudo mkdir -p "$XDG_RUNTIME_DIR"
           sudo chown "$USER:$USER" "$XDG_RUNTIME_DIR"
 
-          mkdir -p "$HOME/.config/containers/systemd"
-          cp /tmp/quadlets/* "$HOME/.config/containers/systemd/"
-
           # GitHub-hosted runners do not start a user manager for the runner account.
           # Start one explicitly, then exercise only Smoke's public lifecycle commands.
           systemd --user --unit=basic.target >/tmp/nix-alpine-user-systemd.log 2>&1 &
@@ -132,7 +129,13 @@ jobs:
             sleep 1
           done
 
-          systemctl --user daemon-reload
+          # Exercise the real install path: Smoke writes the user Quadlets and
+          # performs systemctl --user daemon-reload itself.
+          /tmp/smoke-nix-alpine nix-alpine install \
+            --name qualify \
+            --flake /tmp/service-flake
+          test -f "$HOME/.config/containers/systemd/nix-alpine-qualify.container"
+          test -f "$HOME/.config/containers/systemd/nix-alpine-qualify-store.volume"
           systemctl --user cat nix-alpine-qualify.service >/dev/null
 
           /tmp/smoke-nix-alpine nix-alpine start qualify
