@@ -1,0 +1,4 @@
+[Unit]
+Description=Persistent nix-alpine store
+[Volume]
+VolumeName=nix-alpine-store
