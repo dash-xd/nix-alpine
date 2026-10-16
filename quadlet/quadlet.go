@@ -79,7 +79,7 @@ func renderVolume(base string) string {
 
 func renderContainer(name, flake, target, image string) string {
 	base := "nix-alpine-" + name
-	return fmt.Sprintf("[Unit]\nDescription=nix-alpine single-user flake runner (%s)\nAfter=network-online.target\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspace:ro\nWorkingDir=/workspace\nExec=nix run /workspace%s\n\n[Service]\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake, target)
+	return fmt.Sprintf("[Unit]\nDescription=nix-alpine single-user flake runner (%s)\nAfter=network-online.target\n\n[Container]\nImage=%s\nContainerName=%s\nVolume=%s-store.volume:/nix\nVolume=%s:/workspace:ro\nWorkingDir=/workspace\nStopSignal=SIGINT\nExec=nix run /workspace%s\n\n[Service]\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n", name, image, base, base, flake, target)
 }
 
 func systemctl(op string, args []string) error {
