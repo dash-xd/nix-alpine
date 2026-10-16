@@ -1,0 +1,4 @@
+[Unit]
+Description=nix-alpine daemon socket volume
+[Volume]
+VolumeName=nix-alpine-socket
