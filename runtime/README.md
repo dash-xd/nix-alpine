@@ -21,7 +21,7 @@ experimental and must be runtime-qualified before production use.
 NIX_ALPINE_IMAGE=localhost/nix-alpine:daemon bash deploy/podman/run.sh
 podman run --rm --user 0 \
   -v nix-alpine-store:/nix:ro \
-  -v nix-alpine-socket:/run/nix \
+  -v nix-alpine-socket:/nix/var/nix/daemon-socket \
   -v "$PWD/examples/smoke-flake:/workspace:ro" \
   localhost/nix-alpine:daemon client nix build /workspace#default --no-link
 ```
