@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+export NIX_REMOTE=daemon
+exec nix store ping --store daemon
