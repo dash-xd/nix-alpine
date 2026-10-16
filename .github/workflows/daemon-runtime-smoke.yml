@@ -1,0 +1,68 @@
+name: Daemon flake runtime qualification
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Dockerfile.daemon
+      - runtime/**
+      - deploy/**
+      - examples/smoke-flake/**
+      - .github/workflows/daemon-runtime-smoke.yml
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build toolbox and daemon variant
+        run: |
+          set -euo pipefail
+          docker build -t nix-toolbox:latest .
+          docker build -f Dockerfile.daemon -t nix-alpine:daemon .
+      - name: Start persistent store owner
+        run: |
+          set -euo pipefail
+          docker volume create nix-alpine-store
+          docker volume create nix-alpine-socket
+          docker run -d --name nix-alpine-owner \
+            -v nix-alpine-store:/nix \
+            -v nix-alpine-socket:/run/nix \
+            nix-alpine:daemon owner
+          for i in $(seq 1 30); do
+            if docker exec nix-alpine-owner nix-alpine healthcheck; then exit 0; fi
+            sleep 2
+          done
+          docker logs nix-alpine-owner
+          exit 1
+      - name: Build arbitrary mounted flake twice
+        run: |
+          set -euo pipefail
+          for i in 1 2; do
+            docker run --rm --user 0 \
+              -v nix-alpine-store:/nix:ro \
+              -v nix-alpine-socket:/run/nix \
+              -v "$PWD/examples/smoke-flake:/workspace:ro" \
+              nix-alpine:daemon client nix build /workspace#default --no-link
+          done
+      - name: Build dockerTools output
+        run: |
+          docker run --rm --user 0 \
+            -v nix-alpine-store:/nix:ro \
+            -v nix-alpine-socket:/run/nix \
+            -v "$PWD/examples/smoke-flake:/workspace:ro" \
+            nix-alpine:daemon client nix build /workspace#image --no-link
+      - name: Restart owner and verify store
+        run: |
+          set -euo pipefail
+          docker restart nix-alpine-owner
+          for i in $(seq 1 30); do
+            if docker exec nix-alpine-owner nix-alpine healthcheck; then exit 0; fi
+            sleep 2
+          done
+          docker logs nix-alpine-owner
+          exit 1
+      - name: Diagnostics
+        if: always()
+        run: |
+          docker ps -a
+          docker logs nix-alpine-owner || true
