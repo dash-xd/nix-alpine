@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+mode="${1:-owner}"
+if [ "$#" -gt 0 ]; then shift; fi
+case "$mode" in
+  init-store) exec /opt/nix-alpine/runtime/init-store "$@" ;;
+  owner) exec /opt/nix-alpine/runtime/owner "$@" ;;
+  client) exec /opt/nix-alpine/runtime/client "$@" ;;
+  healthcheck) exec /opt/nix-alpine/runtime/healthcheck "$@" ;;
+  *) echo "usage: nix-alpine {init-store|owner|client|healthcheck}" >&2; exit 64 ;;
+esac
