@@ -1,6 +1,7 @@
 name: Single-user Nix store qualification
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - codex/smoke-single-user-component
@@ -82,7 +83,7 @@ jobs:
             --user 1000:1000 \
             -v "$volume:/nix" \
             localhost/nix-toolbox:latest \
-            sh -lc "test -x '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
+            sh -lc "test -r '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
           podman start -a "$second"
 
           # Verify executable ownership/access and the Nix DB from the replacement container.
