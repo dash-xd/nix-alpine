@@ -73,7 +73,7 @@ jobs:
           test "$copied_store_count" -ge "$image_store_count"
 
           # Exercise store/database mutation through single-user Nix and retain a sentinel store path.
-          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c "nix store add-file /etc/os-release")"
+          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c "nix store add-file /etc/alpine-release")"
           test -n "$store_path"
           podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest test -r "$store_path"
 
