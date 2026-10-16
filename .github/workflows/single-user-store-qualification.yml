@@ -136,6 +136,19 @@ jobs:
           /tmp/smoke-nix-alpine nix-alpine status qualify
           systemctl --user show -p LoadState --value nix-alpine-qualify.service | grep -Fx loaded
 
+          # systemd/Podman being active only proves the container started; wait until
+          # nix run has realized and entered the long-running flake application.
+          for i in $(seq 1 120); do
+            if podman exec nix-alpine-qualify pgrep -f 'sleep infinity' >/dev/null 2>&1; then
+              break
+            fi
+            test "$i" -lt 120 || {
+              podman logs nix-alpine-qualify || true
+              exit 1
+            }
+            sleep 1
+          done
+
           /tmp/smoke-nix-alpine nix-alpine stop qualify
           for i in $(seq 1 20); do
             state="$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)"
