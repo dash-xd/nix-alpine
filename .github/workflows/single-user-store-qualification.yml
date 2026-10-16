@@ -122,6 +122,14 @@ jobs:
           systemctl --user show -p LoadState --value nix-alpine-qualify.service | grep -Fx loaded
 
           /tmp/smoke-nix-alpine nix-alpine stop qualify
+          for i in $(seq 1 20); do
+            state="$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)"
+            case "$state" in
+              inactive) break ;;
+              deactivating) sleep 1 ;;
+              *) echo "unexpected post-stop state: $state" >&2; systemctl --user status nix-alpine-qualify.service --no-pager || true; exit 1 ;;
+            esac
+          done
           test "$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)" = inactive
 
       - name: Quadlet generator accepts generated units
