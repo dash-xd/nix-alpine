@@ -31,7 +31,7 @@ func install(args []string) error {
 	flake := fs.String("flake", "", "host flake directory")
 	target := fs.String("target", "#default", "flake installable suffix")
 	image := fs.String("image", defaultImage, "OCI image")
-	root := fs.String("quadlet-dir", "", "override user Quadlet directory")
+	root := fs.String("quadlet-dir", "", "override user Quadlet directory (disables daemon-reload)")
 	if err := fs.Parse(args); err != nil { return err }
 	if !validName(*name) { return fmt.Errorf("invalid --name %q", *name) }
 
@@ -60,7 +60,16 @@ func install(args []string) error {
 		if err := os.Rename(tmp, dst); err != nil { return err }
 		fmt.Println(dst)
 	}
+	if *root == "" {
+		if err := reloadUserSystemd(); err != nil { return err }
+	}
 	return nil
+}
+
+func reloadUserSystemd() error {
+	c := exec.Command("systemctl", "--user", "daemon-reload")
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	return c.Run()
 }
 
 func renderVolume(base string) string {
