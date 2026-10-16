@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const defaultImage = "localhost/nix-toolbox:latest"
@@ -83,12 +84,21 @@ func renderContainer(name, flake, target, image string) string {
 
 func systemctl(op string, args []string) error {
 	if len(args) != 1 || !validName(args[0]) { return fmt.Errorf("usage: nix-alpine %s NAME", op) }
-	systemctlArgs := []string{"--user", op}
-	if op == "stop" { systemctlArgs = append(systemctlArgs, "--wait") }
-	systemctlArgs = append(systemctlArgs, "nix-alpine-"+args[0]+".service")
-	c := exec.Command("systemctl", systemctlArgs...)
+	unit := "nix-alpine-" + args[0] + ".service"
+	c := exec.Command("systemctl", "--user", op, unit)
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	return c.Run()
+	if err := c.Run(); err != nil { return err }
+	if op != "stop" { return nil }
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("systemctl", "--user", "show", "-p", "ActiveState", "--value", unit).Output()
+		if err != nil { return err }
+		state := strings.TrimSpace(string(out))
+		if state == "inactive" || state == "failed" { return nil }
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for %s to stop", unit)
 }
 
 func validName(s string) bool {
