@@ -1,0 +1,102 @@
+name: Single-user Nix store qualification
+
+on:
+  push:
+    branches:
+      - codex/smoke-single-user-component
+  pull_request:
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+
+      - name: Go component checks
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go test ./...
+          go vet ./...
+          go build -o /tmp/smoke-nix-alpine ./cmd/smoke-nix-alpine
+          /tmp/smoke-nix-alpine commands | grep -Fx nix-alpine
+
+      - name: Generate scoped Quadlets
+        run: |
+          mkdir -p /tmp/quadlets
+          /tmp/smoke-nix-alpine nix-alpine install \
+            --name qualify \
+            --flake "$PWD" \
+            --quadlet-dir /tmp/quadlets
+          grep -Fx 'VolumeName=nix-alpine-qualify-store' /tmp/quadlets/nix-alpine-qualify-store.volume
+          grep -Fx 'Volume=nix-alpine-qualify-store.volume:/nix' /tmp/quadlets/nix-alpine-qualify.container
+          ! grep -E 'daemon|daemon-socket|-home\.volume' /tmp/quadlets/nix-alpine-qualify.container
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman info
+
+      - name: Build single-user Nix-Alpine image
+        run: podman build -t localhost/nix-toolbox:latest .
+
+      - name: Qualify first-mount copy-up and store reuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume=nix-alpine-qualification-store
+          first=nix-alpine-qualification-first
+          second=nix-alpine-qualification-second
+          trap 'podman rm -f "$first" "$second" >/dev/null 2>&1 || true; podman volume rm "$volume" >/dev/null 2>&1 || true' EXIT
+
+          # The image has a complete single-user Nix installation in /nix.
+          image_store_count="$(podman run --rm localhost/nix-toolbox:latest sh -lc 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          test "$image_store_count" -gt 0
+
+          podman volume create "$volume"
+
+          # First attachment must copy the image's /nix tree into the empty named volume.
+          podman create --name "$first" \
+            --user 1000:1000 \
+            -v "$volume:/nix" \
+            localhost/nix-toolbox:latest \
+            sh -lc 'test -x "$HOME/.nix-profile/bin/nix" && test -d /nix/store && nix --version' >/dev/null
+          podman start -a "$first"
+
+          copied_store_count="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          test "$copied_store_count" -ge "$image_store_count"
+
+          # Exercise store/database mutation through single-user Nix and retain a sentinel store path.
+          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc "nix store add-file /etc/os-release")"
+          test -n "$store_path"
+          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest test -r "$store_path"
+
+          # Remove the original container, create a replacement, and prove the same store is reusable.
+          podman rm "$first"
+          podman create --name "$second" \
+            --user 1000:1000 \
+            -v "$volume:/nix" \
+            localhost/nix-toolbox:latest \
+            sh -lc "test -x '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
+          podman start -a "$second"
+
+          # Verify executable ownership/access and the Nix DB from the replacement container.
+          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc \
+            'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --all'
+
+      - name: Quadlet generator accepts generated units
+        run: |
+          if command -v /usr/lib/systemd/system-generators/podman-system-generator >/dev/null; then
+            mkdir -p "$HOME/.config/containers/systemd"
+            cp /tmp/quadlets/* "$HOME/.config/containers/systemd/"
+            mkdir -p /tmp/generated
+            /usr/lib/systemd/system-generators/podman-system-generator --user /tmp/generated
+            test -f /tmp/generated/nix-alpine-qualify.service
+          else
+            echo "Podman package has no Quadlet generator at expected path; direct Podman qualification already passed."
+          fi
