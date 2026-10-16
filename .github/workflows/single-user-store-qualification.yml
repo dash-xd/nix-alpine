@@ -139,7 +139,7 @@ jobs:
           # systemd/Podman being active only proves the container started; wait until
           # nix run has realized and entered the long-running flake application.
           for i in $(seq 1 120); do
-            if podman exec nix-alpine-qualify pgrep -f 'sleep infinity' >/dev/null 2>&1; then
+            if podman exec nix-alpine-qualify sh -c 'pidof sleep >/dev/null' >/dev/null 2>&1; then
               break
             fi
             test "$i" -lt 120 || {
