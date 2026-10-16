@@ -56,7 +56,7 @@ jobs:
           trap 'podman rm -f "$first" "$second" >/dev/null 2>&1 || true; podman volume rm "$volume" >/dev/null 2>&1 || true' EXIT
 
           # The image has a complete single-user Nix installation in /nix.
-          image_store_count="$(podman run --rm localhost/nix-toolbox:latest sh -lc 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          image_store_count="$(podman run --rm localhost/nix-toolbox:latest sh -c 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
           test "$image_store_count" -gt 0
 
           podman volume create "$volume"
@@ -66,14 +66,14 @@ jobs:
             --user 1000:1000 \
             -v "$volume:/nix" \
             localhost/nix-toolbox:latest \
-            sh -lc 'test -x "$HOME/.nix-profile/bin/nix" && test -d /nix/store && nix --version' >/dev/null
+            sh -c 'test -x "$HOME/.nix-profile/bin/nix" && test -d /nix/store && nix --version' >/dev/null
           podman start -a "$first"
 
-          copied_store_count="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
+          copied_store_count="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c 'find /nix/store -mindepth 1 -maxdepth 1 | wc -l')"
           test "$copied_store_count" -ge "$image_store_count"
 
           # Exercise store/database mutation through single-user Nix and retain a sentinel store path.
-          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc "nix store add-file /etc/os-release")"
+          store_path="$(podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c "nix store add-file /etc/os-release")"
           test -n "$store_path"
           podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest test -r "$store_path"
 
@@ -83,11 +83,11 @@ jobs:
             --user 1000:1000 \
             -v "$volume:/nix" \
             localhost/nix-toolbox:latest \
-            sh -lc "test -r '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
+            sh -c "test -r '$store_path' && nix store verify '$store_path' && nix --version" >/dev/null
           podman start -a "$second"
 
           # Verify executable ownership/access and the Nix DB from the replacement container.
-          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -lc \
+          podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c \
             'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --all'
 
       - name: Quadlet generator accepts generated units
