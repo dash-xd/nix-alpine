@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+test "$#" -gt 0 || { echo "client expects a Nix command and arguments" >&2; exit 64; }
+test -S /run/nix/daemon-socket/socket || { echo "Nix daemon socket unavailable" >&2; exit 1; }
+export NIX_REMOTE=daemon
+exec "$@"
