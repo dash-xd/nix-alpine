@@ -37,7 +37,7 @@ runs:
         docker volume create "$store" >/dev/null
         docker volume create "$socket" >/dev/null
         docker run -d --name "$owner" \
-          -v "$store:/nix" -v "$socket:/run/nix" \
+          -v "$store:/nix" -v "$socket:/nix/var/nix/daemon-socket" \
           "$NIX_ALPINE_IMAGE" owner >/dev/null
         ready=false
         for i in $(seq 1 30); do
@@ -57,7 +57,7 @@ runs:
         docker run --rm --user 0 \
           -e NIX_ALPINE_COMMAND \
           -v "$store:/nix:ro" \
-          -v "$socket:/run/nix" \
+          -v "$socket:/nix/var/nix/daemon-socket" \
           -v "$GITHUB_WORKSPACE:/workspace:ro" \
           -w "/workspace/$NIX_ALPINE_WORKDIR" \
           "$NIX_ALPINE_IMAGE" client bash -lc 'exec bash -lc "$NIX_ALPINE_COMMAND"'
