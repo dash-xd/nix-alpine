@@ -32,18 +32,19 @@ jobs:
           cat > /tmp/service-flake/flake.nix <<'EOF'
           {
             description = "nix-alpine systemd qualification";
-            inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-            outputs = { self, nixpkgs }: let
-              system = "x86_64-linux";
-              pkgs = import nixpkgs { inherit system; };
-            in {
-              packages.${system}.default = pkgs.writeShellApplication {
-                name = "nix-alpine-qualification";
-                text = "exec sleep infinity";
+            outputs = { self }: {
+              apps.x86_64-linux.default = {
+                type = "app";
+                program = "${self}/run";
               };
             };
           }
           EOF
+          cat > /tmp/service-flake/run <<'EOF'
+          #!/bin/sh
+          exec sleep infinity
+          EOF
+          chmod +x /tmp/service-flake/run
           /tmp/smoke-nix-alpine nix-alpine install \
             --name qualify \
             --flake /tmp/service-flake \
