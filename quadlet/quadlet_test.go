@@ -35,3 +35,35 @@ func TestInstallWritesScopedStoreAndContainer(t *testing.T) {
 func TestInvalidScope(t *testing.T) {
 	if validName("../shared") { t.Fatal("path-like scope accepted") }
 }
+
+func TestSystemctlLifecycleTargetsGeneratedUserService(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args")
+	script := filepath.Join(dir, "systemctl")
+	body := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + log + "\n"
+	if err := os.WriteFile(script, []byte(body), 0755); err != nil { t.Fatal(err) }
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := systemctl("start", []string{"api"}); err != nil { t.Fatal(err) }
+	got, err := os.ReadFile(log)
+	if err != nil { t.Fatal(err) }
+	if string(got) != "--user\nstart\nnix-alpine-api.service\n" {
+		t.Fatalf("unexpected systemctl invocation: %q", got)
+	}
+}
+
+func TestReloadTargetsUserManager(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args")
+	script := filepath.Join(dir, "systemctl")
+	body := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + log + "\n"
+	if err := os.WriteFile(script, []byte(body), 0755); err != nil { t.Fatal(err) }
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := reloadUserSystemd(); err != nil { t.Fatal(err) }
+	got, err := os.ReadFile(log)
+	if err != nil { t.Fatal(err) }
+	if string(got) != "--user\ndaemon-reload\n" {
+		t.Fatalf("unexpected systemctl reload: %q", got)
+	}
+}
