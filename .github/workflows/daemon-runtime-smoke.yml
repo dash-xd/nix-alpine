@@ -42,7 +42,7 @@ jobs:
               -v nix-alpine-store:/nix:ro \
               -v nix-alpine-socket:/run/nix \
               -v "$PWD/examples/smoke-flake:/workspace:ro" \
-              nix-alpine:daemon client nix build /workspace#default --no-link
+              nix-alpine:daemon client nix build --no-write-lock-file /workspace#default --no-link
           done
       - name: Build dockerTools output
         run: |
@@ -50,7 +50,7 @@ jobs:
             -v nix-alpine-store:/nix:ro \
             -v nix-alpine-socket:/run/nix \
             -v "$PWD/examples/smoke-flake:/workspace:ro" \
-            nix-alpine:daemon client nix build /workspace#image --no-link
+            nix-alpine:daemon client nix build --no-write-lock-file /workspace#image --no-link
       - name: Restart owner and verify store
         run: |
           set -euo pipefail
