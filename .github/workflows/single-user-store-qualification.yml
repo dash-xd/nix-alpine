@@ -51,7 +51,7 @@ jobs:
             --quadlet-dir /tmp/quadlets
           grep -Fx 'VolumeName=nix-alpine-qualify-store' /tmp/quadlets/nix-alpine-qualify-store.volume
           grep -Fx 'Volume=nix-alpine-qualify-store.volume:/nix' /tmp/quadlets/nix-alpine-qualify.container
-          grep -Fx 'StopSignal=SIGINT' /tmp/quadlets/nix-alpine-qualify.container
+          grep -Fx 'PodmanArgs=--stop-signal=SIGINT' /tmp/quadlets/nix-alpine-qualify.container
           ! grep -E 'daemon|daemon-socket|-home\.volume' /tmp/quadlets/nix-alpine-qualify.container
 
       - name: Install Podman
