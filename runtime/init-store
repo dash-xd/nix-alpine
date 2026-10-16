@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+# Must run exclusively: do not initialize while a daemon is using this store.
+test "$(id -u)" -eq 0 || { echo "init-store requires root" >&2; exit 1; }
+test -d /opt/nix-alpine/store-seed/store || { echo "missing Nix seed" >&2; exit 1; }
+mkdir -p /nix
+if [ -e /nix/var/nix/db/db.sqlite ] || [ -e /nix/var/nix/db/db.sqlite-wal ]; then
+  echo "existing store database: refusing initialization"
+  exit 0
+fi
+if [ -n "$(ls -A /nix)" ]; then
+  echo "nonempty uninitialized /nix: refusing to overwrite" >&2
+  exit 1
+fi
+cp -a /opt/nix-alpine/store-seed/. /nix/
+test -d /nix/store
+echo "Nix store seeded"
