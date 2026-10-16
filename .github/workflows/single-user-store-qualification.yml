@@ -90,6 +90,40 @@ jobs:
           podman run --rm --user 1000:1000 -v "$volume:/nix" localhost/nix-toolbox:latest sh -c \
             'test -x "$HOME/.nix-profile/bin/nix"; test -w /nix/store; nix store verify --no-trust --all'
 
+      - name: Qualify Smoke through user systemd
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          export XDG_RUNTIME_DIR="/run/user/$uid"
+          sudo loginctl enable-linger "$USER" || true
+          sudo mkdir -p "$XDG_RUNTIME_DIR"
+          sudo chown "$USER:$USER" "$XDG_RUNTIME_DIR"
+
+          mkdir -p "$HOME/.config/containers/systemd"
+          cp /tmp/quadlets/* "$HOME/.config/containers/systemd/"
+
+          # GitHub-hosted runners do not start a user manager for the runner account.
+          # Start one explicitly, then exercise only Smoke's public lifecycle commands.
+          systemd --user --unit=basic.target >/tmp/nix-alpine-user-systemd.log 2>&1 &
+          manager_pid=$!
+          trap 'kill "$manager_pid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            systemctl --user is-system-running >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          systemctl --user daemon-reload
+          systemctl --user cat nix-alpine-qualify.service >/dev/null
+
+          /tmp/smoke-nix-alpine nix-alpine start qualify
+          /tmp/smoke-nix-alpine nix-alpine status qualify
+          systemctl --user show -p LoadState --value nix-alpine-qualify.service | grep -Fx loaded
+
+          /tmp/smoke-nix-alpine nix-alpine stop qualify
+          test "$(systemctl --user show -p ActiveState --value nix-alpine-qualify.service)" = inactive
+
       - name: Quadlet generator accepts generated units
         run: |
           if command -v /usr/lib/systemd/system-generators/podman-system-generator >/dev/null; then
