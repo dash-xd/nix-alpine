@@ -1,0 +1,24 @@
+[Unit]
+Description=Nix-Alpine build workspace (@SCOPE@)
+RequiresMountsFor=@WORKSPACES@
+
+[Container]
+ContainerName=@CONTAINER@
+Image=@IMAGE@
+Pull=never
+Volume=@VOLUME@:/nix
+Volume=@WORKSPACES@:/workspaces:rw
+WorkingDir=/workspaces
+Environment=HOME=/home/nixuser
+Environment=NIX_CONFIG=experimental-features = nix-command flakes
+Exec=sleep infinity
+UserNS=keep-id
+PodmanArgs=--device=/dev/fuse
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
