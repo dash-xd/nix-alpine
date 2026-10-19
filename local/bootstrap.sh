@@ -44,8 +44,7 @@ log "Installing Quadlets"
 render "$SCRIPT_DIR/quadlet/nix-alpine-store.volume" "$QUADLET_DIR/$VOLUME.volume"
 render "$SCRIPT_DIR/quadlet/nix-alpine.container" "$QUADLET_DIR/$CONTAINER.container"
 systemctl --user daemon-reload
-systemctl --user enable --now "$SERVICE"
-systemctl --user restart "$SERVICE"
+systemctl --user start "$SERVICE"
 log "Verifying Nix"
 podman exec "$CONTAINER" nix --version
 cat <<EOF
