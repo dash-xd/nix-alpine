@@ -13,12 +13,15 @@ PROJECTS ?=
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: help bootstrap start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: uninstall help bootstrap start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make uninstall (remove scope resources)"
 	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
 bootstrap:
-	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" ./bootstrap.sh
+	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
+uninstall:
+	SCOPE="$(SCOPE)" bash ./uninstall.sh
 start:
 	systemctl --user start "$(SERVICE)"
 stop:
