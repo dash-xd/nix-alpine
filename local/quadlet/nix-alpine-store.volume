@@ -1,0 +1,5 @@
+[Unit]
+Description=Nix-Alpine scoped store (@SCOPE@)
+
+[Volume]
+VolumeName=@VOLUME@
