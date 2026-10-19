@@ -10,17 +10,21 @@ TARGET ?=
 ARGS ?=
 CMD ?= bash
 PROJECTS ?=
+# Set FORCE=1 to discard tracked local changes before refreshing.
+FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: uninstall help bootstrap refresh update start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
-	@echo "make refresh   (rebuild toolbox image and restart this scope; preserve /nix and workspaces)"
+	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
 	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
-refresh update: bootstrap
+refresh update:
+	@bash ./refresh.sh "$(FORCE)"
+	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
 uninstall:
