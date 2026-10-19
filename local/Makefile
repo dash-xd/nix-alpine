@@ -50,7 +50,7 @@ check:
 build:
 	podman exec "$(CONTAINER)" nix build --no-link "$(FLAKE_REF)"
 run:
-	podman exec -it "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
+	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
 develop:
 	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix develop "$(FLAKE_REF)" -c bash
 store:
