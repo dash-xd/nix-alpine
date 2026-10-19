@@ -4,6 +4,7 @@ SCOPE ?= dev
 CONTAINER := nix-alpine-$(SCOPE)
 SERVICE := $(CONTAINER).service
 VOLUME := $(CONTAINER)-store
+IMAGE ?= localhost/nix-toolbox:latest
 WORKSPACES ?= $(HOME)/workspace/nix
 FLAKE ?= .
 TARGET ?=
@@ -17,8 +18,10 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: uninstall help bootstrap refresh update sync start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: uninstall help bootstrap refresh update sync images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make images       (show active container image ID, toolbox tags, dangling images)"
+	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
@@ -28,6 +31,10 @@ help:
 refresh update:
 	@bash ./refresh.sh "$(FORCE)"
 	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
+images:
+	@bash ./images.sh inspect "$(CONTAINER)" "$(IMAGE)"
+image-prune:
+	@bash ./images.sh prune "$(CONTAINER)" "$(IMAGE)"
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
 	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)"
