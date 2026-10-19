@@ -1,18 +1,18 @@
-# Local Make/Bash Nix-Alpine workspace
+# Local Nix-Alpine workspace (Make/Bash only)
 
-Smoke and Go orchestration are explicitly out of scope. This is a staging path for a rootless Podman Quadlet and one writable /nix volume per scope.
+Place this repository at `~/workspace/nix/nix-alpine`. The parent directory is mounted to `/workspaces` in the container.
 
-Default host workspace: `~/workspace/nix` — mounted to `/workspaces` inside Nix-Alpine. Other source repositories may be cloned as child directories.
-
-```sh
-git clone https://github.com/dash-xd/nix-alpine.git ~/src/nix-alpine
-cd ~/src/nix-alpine/local
+```bash
+mkdir -p ~/workspace/nix
+git clone -b codex/make-bash-local-orchestration https://github.com/dash-xd/nix-alpine.git ~/workspace/nix/nix-alpine
+cd ~/workspace/nix/nix-alpine/local
 make bootstrap
-make run FLAKE=agni TARGET='#default'
+make status
+make uninstall
 ```
 
-On the staging branch, check out that branch before running the local Makefile. A new `nix run` app may build artifacts within the container, but **must not attempt to operate host systemd directly**. Host activation will be handled by a separate, narrowly scoped Bash deploy target after generation exports, validation, and rollback semantics are implemented.
+`make uninstall` removes the selected scope's rootless Podman container, Quadlet definitions and Nix store volume, and removes the toolbox image if no other container references it. It does **not** remove this checkout, `~/workspace/nix`, other flakes, or unrelated Podman resources.
 
-The host source checkout (`~/src/nix-alpine`) is separate from the flake workspace (`~/workspace/nix`). The bootstrap fetches updates to nix-alpine main through `git pull --ff-only`, which does not change branches itself. Pin a reviewed git revision before relying on the image as a trusted build input.
+Default scope: `dev`. Other scopes: `make bootstrap SCOPE=other` and `make uninstall SCOPE=other`.
 
-This variant intentionally does not request a Podman API socket, systemd DBus, KVM, host root, or privileges. Qualification for mounted workspaces, UID mappings, Nix store persistence and service restart is still outstanding.
+No Smoke, Go daemon, host systemd bus mount, KVM passthrough or host deployment activation is implemented. The actual ThinkPad bootstrap and uninstall lifecycle still needs qualification.
