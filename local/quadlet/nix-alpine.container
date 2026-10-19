@@ -10,10 +10,8 @@ Volume=@VOLUME@:/nix
 Volume=@WORKSPACES@:/workspaces:rw
 WorkingDir=/workspaces
 Environment=HOME=/home/nixuser
-Environment=NIX_CONFIG=experimental-features = nix-command flakes
 Exec=sleep infinity
 UserNS=keep-id
-PodmanArgs=--device=/dev/fuse
 NoNewPrivileges=true
 
 [Service]
