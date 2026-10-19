@@ -18,8 +18,9 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: uninstall help bootstrap refresh update sync show-images images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
@@ -33,6 +34,8 @@ refresh update:
 	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 show-images images:
 	@bash ./images.sh inspect "$(CONTAINER)" "$(IMAGE)"
+show-image-layers:
+	@python3 ./show-image-layers.py "$(CONTAINER)" "$(IMAGE)"
 image-prune:
 	@bash ./images.sh prune "$(CONTAINER)" "$(IMAGE)"
 sync:
