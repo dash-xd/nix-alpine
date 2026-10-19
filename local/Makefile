@@ -10,13 +10,16 @@ TARGET ?=
 ARGS ?=
 CMD ?= bash
 PROJECTS ?=
+REPO ?=
+BRANCH ?= main
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: uninstall help bootstrap refresh update start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: uninstall help bootstrap refresh update sync start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
@@ -25,6 +28,9 @@ help:
 refresh update:
 	@bash ./refresh.sh "$(FORCE)"
 	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
+sync:
+	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
+	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)"
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
 uninstall:
