@@ -18,9 +18,9 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: uninstall help bootstrap refresh update sync images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: uninstall help bootstrap refresh update sync show-images images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
-	@echo "make images       (show active container image ID, toolbox tags, dangling images)"
+	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
@@ -31,7 +31,7 @@ help:
 refresh update:
 	@bash ./refresh.sh "$(FORCE)"
 	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
-images:
+show-images images:
 	@bash ./images.sh inspect "$(CONTAINER)" "$(IMAGE)"
 image-prune:
 	@bash ./images.sh prune "$(CONTAINER)" "$(IMAGE)"
