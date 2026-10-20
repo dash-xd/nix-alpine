@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 SCOPE="${SCOPE:-dev}"
-IMAGE="${IMAGE:-localhost/nix-toolbox:latest}"
+IMAGE="${IMAGE:-localhost/nix.xd:latest}"
 [[ "$SCOPE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || { echo "Invalid scope" >&2; exit 2; }
 CONTAINER="nix-alpine-$SCOPE"
 VOLUME="$CONTAINER-store"
