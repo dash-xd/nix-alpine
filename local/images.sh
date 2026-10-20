@@ -2,7 +2,7 @@
 set -euo pipefail
 action="${1:-inspect}"
 container="${2:-nix-alpine-dev}"
-image="${3:-localhost/nix-toolbox:latest}"
+image="${3:-localhost/nix.xd:latest}"
 
 echo "Nix-Alpine container: $container"
 if podman container exists "$container"; then
