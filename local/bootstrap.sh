@@ -5,7 +5,7 @@ trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACES="${WORKSPACES:-$HOME/workspace/nix}"
 SCOPE="${SCOPE:-dev}"
-IMAGE="${IMAGE:-localhost/nix-toolbox:latest}"
+IMAGE="${IMAGE:-localhost/nix.xd:latest}"
 REPO="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 CONTAINER="nix-alpine-$SCOPE"
