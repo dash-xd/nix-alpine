@@ -61,15 +61,14 @@ qualify-workspace:
 # Diagnose the actual environment before changing toolbox execution.
 diagnose-toolbox:
 	@podman exec "$(CONTAINER)" nix --version
-	@podman exec "$(CONTAINER)" nix eval --raw "/workspaces/$(TOOLCHAIN_FLAKE)#devShells.$(podman exec "$(CONTAINER)" nix eval --impure --raw --expr 'builtins.currentSystem').$(TOOLCHAIN_SHELL).drvPath"
-	@podman exec "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c sh -c 'printf "PATH=%s\\n" "$PATH"; command -v go || true; ls -l /nix/var/nix/profiles/default/bin/go 2>/dev/null || true; go version'
+	@podman exec "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c go version
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
 test-workspace:
 	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./httpapi"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" sh -c 'GOWORK=off go test -count=1 "$1"' sh "$(PACKAGE)"
+	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
 uninstall:
