@@ -127,7 +127,7 @@ build:
 path-info:
 	podman exec "$(CONTAINER)" nix path-info "$(FLAKE_REF)"
 image-load:
-	@bash ./image-store.sh load "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
+	@bash ./image-store.sh "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
 image-inspect:
 	@podman images --no-trunc
 run:
