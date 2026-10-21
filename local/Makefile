@@ -42,7 +42,7 @@ help:
 	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
 	@echo "make path-info FLAKE=logma TARGET='#provider-image' (show built Nix store path)"
 	@echo "make image-load FLAKE=logma TARGET='#provider-image' (load archive into rootless Podman)"
-	@echo "make image-inspect FLAKE=logma TARGET='#provider-image' (inspect imported image)"
+	@echo "make image-inspect (list rootless Podman image IDs)"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
 # Fast-forward source without rebuilding or restarting the container.
 self-update:
@@ -129,7 +129,7 @@ path-info:
 image-load:
 	@bash ./image-store.sh load "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
 image-inspect:
-	@bash ./image-store.sh inspect "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
+	@podman images --no-trunc
 run:
 	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
 develop:
