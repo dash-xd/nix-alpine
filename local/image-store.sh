@@ -10,7 +10,7 @@ archive="$(podman exec "$container" nix path-info "$flake_ref")"
   exit 1
 }
 mountpoint="$(podman volume inspect "$volume" --format '{{.Mountpoint}}')"
-[[ -n "$mountpoint" && -d "$mountpoint/store" ]] || {
+[[ -n "$mountpoint" ]] && podman unshare test -d "$mountpoint/store" || {
   echo "Missing scoped Nix store volume: $volume" >&2
   exit 1
 }
