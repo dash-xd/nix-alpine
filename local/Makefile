@@ -22,7 +22,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: test-workspace-race test-workspace-redis test-workspace-race-latest test-workspace-redis-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
@@ -33,7 +33,7 @@ help:
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
 	@echo "make self-update (fast-forward this checkout; no image rebuild)"
 	@echo "make test-workspace-race-latest REPO=... BRANCH=... (race detector via Nix)"
-	@echo "make test-workspace-redis-latest REPO=xd-dash/skymill BRANCH=... (isolated Redis integration)"
+	@echo "make REPO=xd-dash/skymill BRANCH=... (isolated Redis integration)"
 	@echo "make test-workspace-latest REPO=... BRANCH=... PACKAGE=... (self-update, then test)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
@@ -83,7 +83,7 @@ test-workspace:
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
 # Re-enter Make after fast-forward so updated recipes take effect.
-test-workspace-race-latest test-workspace-redis-latest:
+test-workspace-race-latest:
 	@$(MAKE) self-update FORCE="$(FORCE)"
 	@$(MAKE) $(patsubst %-latest,%,$@) REPO="$(REPO)" BRANCH="$(BRANCH)" PACKAGE="$(PACKAGE)" SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 
@@ -91,13 +91,6 @@ test-workspace-race:
 	@test -n "$(REPO)" || { echo "REPO is required"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
-
-# Redis is started inside the toolbox container and stopped by the script.
-# Never point the destructive Redis tests at an external or shared instance.
-test-workspace-redis:
-	@test "$(REPO)" = "xd-dash/skymill" || { echo "Redis gate currently supports REPO=xd-dash/skymill only"; exit 2; }
-	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/skymill" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#integration" -c bash "/workspaces/nix-alpine/local/redis-qualification.sh"
 
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
