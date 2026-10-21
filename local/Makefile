@@ -11,6 +11,7 @@ TARGET ?=
 ARGS ?=
 CMD ?= bash
 PROJECTS ?=
+COMPONENT ?= logma
 REPO ?=
 BRANCH ?= main
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -18,12 +19,13 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
+	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
@@ -41,6 +43,16 @@ image-prune:
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
 	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)"
+# Sync source, advance one explicitly named component pin, then run the
+# flake's build, baseline and integration qualification gates. Keep the
+# integration gate's exit status; never reinterpret a nonzero result as green.
+qualify-workspace:
+	@test -n "$(REPO)" && test -n "$(FLAKE)" && test "$(FLAKE)" != "." && test -n "$(COMPONENT)" || { echo "Usage: make qualify-workspace REPO=owner/repo BRANCH=branch FLAKE=path COMPONENT=logma"; exit 2; }
+	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
+	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#advance-pin' ARGS="$(COMPONENT)" SCOPE="$(SCOPE)"
+	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#build' SCOPE="$(SCOPE)"
+	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify' SCOPE="$(SCOPE)"
+	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-integration' SCOPE="$(SCOPE)"
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
 uninstall:
