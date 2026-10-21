@@ -8,6 +8,7 @@ IMAGE ?= localhost/nix.xd:latest
 WORKSPACES ?= $(HOME)/workspace/nix
 FLAKE ?= .
 TARGET ?=
+# Image archive is resolved from the selected flake output, never a hard-coded store path.
 ARGS ?=
 CMD ?= bash
 PROJECTS ?=
@@ -22,7 +23,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info develop show check ps inspect store store-info parallel-build
+.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
@@ -40,6 +41,8 @@ help:
 	@echo "make uninstall (remove scope resources)"
 	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
 	@echo "make path-info FLAKE=logma TARGET='#provider-image' (show built Nix store path)"
+	@echo "make image-load FLAKE=logma TARGET='#provider-image' (load archive into rootless Podman)"
+	@echo "make image-inspect FLAKE=logma TARGET='#provider-image' (inspect imported image)"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
 # Fast-forward source without rebuilding or restarting the container.
 self-update:
@@ -123,6 +126,10 @@ build:
 	podman exec "$(CONTAINER)" nix build --no-link "$(FLAKE_REF)"
 path-info:
 	podman exec "$(CONTAINER)" nix path-info "$(FLAKE_REF)"
+image-load:
+	@bash ./image-store.sh load "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
+image-inspect:
+	@bash ./image-store.sh inspect "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
 run:
 	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
 develop:
