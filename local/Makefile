@@ -12,6 +12,7 @@ ARGS ?=
 CMD ?= bash
 PROJECTS ?=
 COMPONENT ?= logma
+PACKAGE ?= ./...
 REPO ?=
 BRANCH ?= main
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -19,13 +20,14 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
+	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via Nix-Alpine)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
@@ -53,6 +55,12 @@ qualify-workspace:
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#build' SCOPE="$(SCOPE)"
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify' SCOPE="$(SCOPE)"
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-integration' SCOPE="$(SCOPE)"
+# Run repository Go tests inside Nix-Alpine, never using host Go.
+# The repository is synchronized first; no qualification pins are advanced.
+test-workspace:
+	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./httpapi"; exit 2; }
+	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
+	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" sh -c 'GOWORK=off go test -count=1 "$1"' sh "$(PACKAGE)"
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" bash ./bootstrap.sh
 uninstall:
