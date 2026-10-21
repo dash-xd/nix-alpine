@@ -22,7 +22,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build develop show check ps inspect store store-info parallel-build
+.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
@@ -39,6 +39,7 @@ help:
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
 	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
+	@echo "make path-info FLAKE=logma TARGET='#provider-image' (show built Nix store path)"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
 # Fast-forward source without rebuilding or restarting the container.
 self-update:
@@ -120,6 +121,8 @@ check:
 	podman exec "$(CONTAINER)" nix flake check "$(FLAKE_REF)"
 build:
 	podman exec "$(CONTAINER)" nix build --no-link "$(FLAKE_REF)"
+path-info:
+	podman exec "$(CONTAINER)" nix path-info "$(FLAKE_REF)"
 run:
 	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
 develop:
