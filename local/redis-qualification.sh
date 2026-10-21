@@ -63,3 +63,6 @@ fi
 grep -q '^--- PASS: TestRedisConcurrentSubscriptionsCloseAll ' "$tmp/test.log"
 grep -q '^--- PASS: TestRedisRequestCancellationClosesSubscription ' "$tmp/test.log"
 grep -q '^--- PASS: TestDeliveryCanBeAckedAfterHTTPServerRestart ' "$tmp/test.log"
+
+# Repeat the restart regression against the same isolated Redis to detect intermittent failures.
+go test -race -count=20 -run '^TestDeliveryCanBeAckedAfterHTTPServerRestart$' ./httpapi
