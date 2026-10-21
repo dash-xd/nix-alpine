@@ -13,6 +13,7 @@ CMD ?= bash
 PROJECTS ?=
 COMPONENT ?= logma
 PACKAGE ?= ./...
+TOOLCHAIN_FLAKE ?= agni/local/fatline
 REPO ?=
 BRANCH ?= main
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -27,7 +28,7 @@ help:
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
-	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via Nix-Alpine)"
+	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (Go via TOOLCHAIN_FLAKE Nix devShell)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
