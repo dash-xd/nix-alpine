@@ -37,7 +37,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
@@ -53,7 +53,7 @@ help:
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
 	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
-	@echo "make fatline-compose (sync Agni and build Quadlet composition; no service activation)"
+	@echo "make compose FLAKE=agni/local/fatline TARGET='#fatline' (build any composition output; no activation)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -113,11 +113,13 @@ fatline-images:
 	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
 
-# Build-only composition gate; does not install or activate user services.
-fatline-compose:
-	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#fatline' SCOPE="$(SCOPE)"
-	@$(MAKE) path-info FLAKE="$(FATLINE_FLAKE)" TARGET='#fatline' SCOPE="$(SCOPE)"
+# Generic composition: the selected flake owns its dependency graph and output.
+# Source synchronization is explicit (make sync); composition never advances refs,
+# imports images, installs Quadlets, or activates services.
+compose:
+	@test "$(FLAKE)" != "." && test -n "$(TARGET)" || { echo "Usage: make compose FLAKE=path TARGET='#output'" >&2; exit 2; }
+	@$(MAKE) build FLAKE="$(FLAKE)" TARGET="$(TARGET)" SCOPE="$(SCOPE)"
+	@$(MAKE) path-info FLAKE="$(FLAKE)" TARGET="$(TARGET)" SCOPE="$(SCOPE)"
 
 # Sync source, advance one explicitly named component pin, then run the
 # flake's build, baseline and integration qualification gates. Keep the
