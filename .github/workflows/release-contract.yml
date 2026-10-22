@@ -1,0 +1,32 @@
+name: Release contract tests
+
+on:
+  push:
+    branches:
+      - codex/make-bash-local-orchestration
+    paths:
+      - 'local/release.py'
+      - 'local/test_release.py'
+      - 'local/Makefile'
+      - '.github/workflows/release-contract.yml'
+  pull_request:
+    paths:
+      - 'local/release.py'
+      - 'local/test_release.py'
+      - 'local/Makefile'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax and unit tests
+        run: |
+          python3 -m py_compile local/release.py
+          python3 -m unittest discover -s local -p 'test_release.py' -v
+      - name: Make target smoke
+        run: |
+          make -C local version COMPONENT=smoke-release-contract RELEASE_STATE="$RUNNER_TEMP/releases"
