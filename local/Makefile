@@ -26,13 +26,14 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
+	@echo "make fatline-compose (sync Agni and build Quadlet composition; no service activation)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -78,6 +79,12 @@ fatline-images:
 	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
+
+# Build-only composition gate; does not install or activate user services.
+fatline-compose:
+	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
+	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#fatline' SCOPE="$(SCOPE)"
+	@$(MAKE) path-info FLAKE="$(FATLINE_FLAKE)" TARGET='#fatline' SCOPE="$(SCOPE)"
 
 # Sync source, advance one explicitly named component pin, then run the
 # flake's build, baseline and integration qualification gates. Keep the
