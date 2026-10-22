@@ -20,17 +20,22 @@ source="${flake%%#*}"
 
 evidence_dir="$root/evidence/$version"; mkdir -p "$evidence_dir"
 tmp="$(mktemp "$root/.evidence.XXXXXXXX")"; trap 'rm -f "$tmp"' EXIT
-printf '{"schema":1,"gates":[' > "$tmp"
+jq -cn --arg image_id "$image" --arg source_sha "$(jq -r .source_sha "$record")" --arg nix_output "$(jq -r .nix_output "$record")" \
+  '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:$nix_output,gates:[]}' > "$tmp"
+gates_file="$(mktemp "$root/.gates.XXXXXXXX")"; trap 'rm -f "$tmp" "$gates_file"' EXIT
+printf '[' > "$gates_file"
 failed=0
 for gate in qualify qualify-integration; do
   log="$evidence_dir/$gate.log"
   if podman exec -w "$source" "$container" nix run "${source}#$gate" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
   hash="$(sha256sum "$log" | cut -d' ' -f1)"
-  [[ "$gate" == qualify ]] || printf ',' >> "$tmp"
+  [[ "$gate" == qualify ]] || printf ',' >> "$gates_file"
   jq -cn --arg name "$gate" --arg sha "$hash" --argjson exit_code "$code" \
-    '{name:$name,sha256:$sha,exit_code:$exit_code}' >> "$tmp"
+    '{name:$name,sha256:$sha,exit_code:$exit_code}' >> "$gates_file"
 done
-printf ']}' >> "$tmp"
+printf ']' >> "$gates_file"
+jq --slurpfile gates "$gates_file" '.gates = $gates[0]' "$tmp" > "$tmp.final"
+mv "$tmp.final" "$tmp"
 if [[ "$failed" != 0 ]]; then
   RELEASE_STATE="$state" bash "$(dirname "$0")/release-ledger.sh" fail "$component" "$version" "$tmp"
   echo "qualification failed; qualified tag was not created" >&2; exit 1
