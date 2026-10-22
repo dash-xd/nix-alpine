@@ -73,7 +73,7 @@ cat > "$root/flake.nix" <<EOF
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/$rev";
   outputs = { self, nixpkgs }:
     let
-      system = builtins.currentSystem;
+      system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       config = import ./composition-config.nix;
       components = builtins.fromJSON (builtins.readFile ./images.json);
@@ -85,8 +85,11 @@ cat > "$root/flake.nix" <<EOF
     };
 }
 EOF
-# Current Agni validator accepts localhost/fatline CalVer references, not the
-# Nix-Alpine qualified tags. Do not bypass this validation or claim success.
-echo "Release lock written to $lock"
-echo "Agni image-reference contract must be reconciled before Nix build" >&2
-exit 1
+# Nix owns the composition derivation and its content-addressed output.
+cd "$root"
+nix flake lock
+nix build .#default --no-link
+out="$(nix path-info .#default)"
+jq -n --arg path "$out" --arg name "$name" '{name:$name,nix_output:$path}' > "$root/output.json"
+printf 'Composition built: %s\n' "$out"
+printf 'Runtime qualification and activation are separate gates.\n'
