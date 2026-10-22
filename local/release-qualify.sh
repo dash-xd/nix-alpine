@@ -8,7 +8,9 @@ flake="$(jq -er .flake_ref "$record")"
 image="$(jq -er .image_id "$record")"
 candidate="$(jq -er .candidate_tag "$record")"
 [[ "$flake" == /workspaces/* && "$flake" == *#* ]] || exit 2
-[[ "$(podman image inspect "$candidate" --format '{{.Id}}')" == "$image" ]] || {
+candidate_id="$(podman image inspect "$candidate" --format '{{.Id}}')"
+[[ "$candidate_id" =~ ^[a-f0-9]{64}$ ]] && candidate_id="sha256:$candidate_id"
+[[ "$candidate_id" == "$image" ]] || {
   echo "candidate identity changed" >&2; exit 1;
 }
 source="${flake%%#*}"
@@ -45,7 +47,7 @@ if [[ -n "$(podman exec "$container" git -C "$source" status --porcelain --untra
       "$(podman exec "$container" git -C "$source" rev-parse HEAD)" != "$(jq -r .source_sha "$record")" ||
       "$(podman exec "$container" sha256sum "$source/flake.lock" | cut -d' ' -f1)" != "$(jq -r .flake_lock_sha256 "$record")" ||
       "$(podman exec "$container" nix path-info "$flake")" != "$(jq -r .nix_output "$record")" ||
-      "$(podman image inspect "$candidate" --format '{{.Id}}')" != "$image" ]]; then
+      "$(podman image inspect "$candidate" --format '{{.Id}}' | sed -E 's/^(sha256:)?([a-f0-9]{64})$/sha256:\2/')" != "$image" ]]; then
   RELEASE_STATE="$state" bash "$(dirname "$0")/release-ledger.sh" fail "$component" "$version" "$tmp"
   echo "release identity changed during qualification" >&2; exit 1
 fi
