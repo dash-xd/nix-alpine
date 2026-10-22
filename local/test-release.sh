@@ -40,7 +40,7 @@ jq -n --arg component "$component" --arg version "$version" \
   --arg source_sha "$(printf '%040d' 1)" --arg flake_lock_sha256 "$(printf '%064d' 2)" \
   '{schema:1,component:$component,version:$version,source_sha:$source_sha,flake_lock_sha256:$flake_lock_sha256,flake_ref:"/workspaces/example#provider-image",nix_output:"/nix/store/example.tar.gz"}' > "$state/metadata.json"
 jq -n --arg image_id "$image_id" '{image_id:$image_id,nix_output:"/nix/store/example.tar.gz",archive_sha256:("a"*64)}' > "$state/import.json"
-bash -x ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" > /dev/null
+bash ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" > /dev/null
 jq -e '.status == "candidate"' "$state/$component/$version.json" >/dev/null
 if bash ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" >/dev/null 2>&1; then
   echo "FAIL: version rebinding accepted" >&2; exit 1
@@ -50,7 +50,7 @@ if bash ./release-ledger.sh qualify "$component" "$version" "$state/bad.json" >/
   echo "FAIL: nonzero qualification accepted" >&2; exit 1
 fi
 [[ ! -f "$state/tags/${qualified//\//_}" ]] || { echo "FAIL: qualified tag was written" >&2; exit 1; }
-jq -n '{schema:1,gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:0}]}' > "$state/good.json"
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:0}]}' > "$state/good.json"
 bash -x ./release-ledger.sh qualify "$component" "$version" "$state/good.json" > /dev/null
 jq -e '.status == "qualified"' "$state/$component/$version.json" >/dev/null
 # Any remapping must be rejected by identity checks.
