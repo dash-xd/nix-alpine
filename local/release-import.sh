@@ -25,6 +25,9 @@ if [[ -z "$image_id" ]]; then
   }
   image_id="$(podman image inspect "${names[0]}" --format '{{.Id}}')"
 fi
+if [[ "$image_id" =~ ^[a-f0-9]{64}$ ]]; then
+  image_id="sha256:$image_id"
+fi
 [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]] || {
   echo "invalid imported image ID: $image_id" >&2; exit 1;
 }
