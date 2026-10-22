@@ -30,6 +30,7 @@
           nativeBuildInputs = [ pkgs.bash ];
         } ''
           bash -n ${./release-metadata.sh}
+          bash -n ${./compose.sh}
           touch $out
         '';
       });
