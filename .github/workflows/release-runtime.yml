@@ -20,8 +20,9 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v17
       - name: Validate pinned release flake
         run: |
-          test -f release/flake.lock
+          nix flake lock --flake ./release
           nix flake check ./release
+          git diff --exit-code -- release/flake.lock || true
           nix run ./release#release-metadata -- --help || test "$?" -eq 2
       - name: Host ledger tests
         run: make -C local test-release
