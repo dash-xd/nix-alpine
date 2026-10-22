@@ -12,6 +12,7 @@ candidate="$(jq -er .candidate_tag "$record")"
   echo "candidate identity changed" >&2; exit 1;
 }
 source="${flake%%#*}"
+[[ -z "$(podman exec "$container" git -C "$source" status --porcelain --untracked-files=all)" ]] || { echo "source dirty" >&2; exit 1; }
 # Validate that the source and lock did not move between build and qualification.
 [[ "$(podman exec "$container" git -C "$source" rev-parse HEAD)" == "$(jq -r .source_sha "$record")" ]] || exit 1
 [[ "$(podman exec "$container" sha256sum "$source/flake.lock" | cut -d' ' -f1)" == "$(jq -r .flake_lock_sha256 "$record")" ]] || exit 1
@@ -35,7 +36,8 @@ if [[ "$failed" != 0 ]]; then
   echo "qualification failed; qualified tag was not created" >&2; exit 1
 fi
 # Check source, lock, store output, and image again after gates.
-if [[ "$(podman exec "$container" git -C "$source" rev-parse HEAD)" != "$(jq -r .source_sha "$record")" ||
+if [[ -n "$(podman exec "$container" git -C "$source" status --porcelain --untracked-files=all)" ||
+      "$(podman exec "$container" git -C "$source" rev-parse HEAD)" != "$(jq -r .source_sha "$record")" ||
       "$(podman exec "$container" sha256sum "$source/flake.lock" | cut -d' ' -f1)" != "$(jq -r .flake_lock_sha256 "$record")" ||
       "$(podman exec "$container" nix path-info "$flake")" != "$(jq -r .nix_output "$record")" ||
       "$(podman image inspect "$candidate" --format '{{.Id}}')" != "$image" ]]; then
