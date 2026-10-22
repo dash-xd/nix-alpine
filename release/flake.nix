@@ -13,7 +13,13 @@
             runtimeInputs = with pkgs; [ coreutils git jq nix ];
             text = builtins.readFile ./release-metadata.sh;
           };
+          compose = pkgs.writeShellApplication {
+            name = "nix-alpine-compose";
+            runtimeInputs = with pkgs; [ bash coreutils findutils git gnugrep jq nix ];
+            text = builtins.readFile ./compose.sh;
+          };
         in {
+          compose = { type = "app"; program = "${compose}/bin/nix-alpine-compose"; };
           release-metadata = {
             type = "app";
             program = "${release}/bin/nix-alpine-release-metadata";
