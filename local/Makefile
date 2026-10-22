@@ -21,6 +21,8 @@ RELEASE_FLAKE ?= $(FLAKE_PATH)
 RELEASE_TARGET ?= $(HASH)provider-image
 RELEASE_GATES ?= $(HASH)qualify $(HASH)qualify-integration
 RELEASE_STATE ?= $(HOME)/.local/state/nix-alpine/releases
+RELEASE_SOURCE_CONTAINER ?= /workspaces/$(notdir $(REPO))
+RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
 PACKAGE ?= ./...
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
@@ -34,7 +36,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: version release-candidate release-qualify fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: release-metadata version release-candidate release-qualify fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make version COMPONENT=logma (next available UTC CalVer in local ledger)"
 	@echo "make release-candidate COMPONENT=logma RELEASE_VERSION=... REPO=owner/repo RELEASE_IMAGE=local/image:tag RELEASE_FLAKE=/workspaces/project RELEASE_TARGET='#provider-image'"
@@ -188,3 +190,9 @@ release-candidate:
 release-qualify:
 	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required" >&2; exit 2; }
 	@python3 ./release.py qualify --component "$(COMPONENT)" --version "$(RELEASE_VERSION)" --container "$(CONTAINER)" --state "$(RELEASE_STATE)" --gates $(RELEASE_GATES)
+
+# Container-side Nix app. Never accesses the host Podman socket.
+release-metadata:
+	@test -n "$(REPO)" && test -n "$(RELEASE_VERSION)" || { echo "REPO and RELEASE_VERSION required" >&2; exit 2; }
+	@$(MAKE) build FLAKE="$(RELEASE_FLAKE)" TARGET="$(RELEASE_TARGET)" SCOPE="$(SCOPE)"
+	@podman exec "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)"
