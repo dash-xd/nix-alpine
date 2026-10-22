@@ -199,7 +199,7 @@ release-candidate:
 
 release-qualify:
 	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required" >&2; exit 2; }
-	@python3 ./release.py qualify --component "$(COMPONENT)" --version "$(RELEASE_VERSION)" --container "$(CONTAINER)" --state "$(RELEASE_STATE)" --gates $(RELEASE_GATES)
+	@bash ./release-qualify.sh "$(COMPONENT)" "$(RELEASE_VERSION)" "$(CONTAINER)" "$(RELEASE_STATE)"
 
 # Container-side Nix app. Never accesses the host Podman socket.
 release-metadata:
