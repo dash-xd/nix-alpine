@@ -1,0 +1,27 @@
+name: Nix release runtime qualification
+on:
+  push:
+    branches:
+      - codex/make-bash-local-orchestration
+    paths:
+      - 'release/**'
+      - 'local/release-*.sh'
+      - 'local/test-release.sh'
+      - '.github/workflows/release-runtime.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  nix-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix into CI runner
+        uses: DeterminateSystems/nix-installer-action@v17
+      - name: Validate pinned release flake
+        run: |
+          test -f release/flake.lock
+          nix flake check ./release
+          nix run ./release#release-metadata -- --help || test "$?" -eq 2
+      - name: Host ledger tests
+        run: make -C local test-release
