@@ -4,7 +4,7 @@ This is the canonical versioning contract for software artifacts **built and imp
 
 ## Boundaries
 
-A version is a human-readable release identity. A tag is a name-to-artifact mapping. An artifact digest identifies exact bytes. Qualification evidence describes what was tested; **external workflow authority** decides what may be published or deployed. Smoke must not infer authorization merely from a tag or its own runtime identity.
+A version is a human-readable release identity. A tag is a name-to-artifact mapping. An artifact digest identifies exact bytes. Qualification evidence describes what was tested. Currently the local Nix-Alpine Makefile's explicitly configured qualification gates determine whether the local qualified tag can be created; no external authority is assumed. A tag alone does not authorize deployment.
 
 Smoke's existing composition and workspace digests remain observational identities, not release versions or authorization. Nix-Alpine's Makefile orchestrates the build and qualification gates; it does not gain authority merely by assigning a tag.
 
@@ -46,4 +46,20 @@ Nix-Alpine owns release naming, Makefile qualification orchestration, and eventu
 
 ## Current implementation status
 
-Nix-Alpine currently has Makefile build and qualification targets, but no qualified release publication, durable tag CAS, revocation enforcement, or deployment activation. Smoke's experimental versioning package on a working branch is not integrated into this Makefile. Qualification evidence must be recorded and verified before any publication target is added.
+Nix-Alpine now provides `make version`, `make release-candidate` and `make release-qualify` backed by `local/release.py`. The local per-user ledger records source SHA, Nix output path, imported Podman image ID, candidate/qualified tags and qualification gate log hashes. Candidate and qualified version tags are guarded against rebinding by the release script and per-component file lock; this is a local workflow invariant, not tamper-proof Podman tag immutability. A failed gate writes failure evidence and prevents a qualified tag. There is no registry publication, mutable channel promotion/CAS, revocation enforcement, qualified multi-component manifest or deployment activation. Smoke's experimental versioning package is not integrated.
+
+
+## Local release commands
+
+Run from `local/` after importing the built image into rootless Podman:
+
+```sh
+make version COMPONENT=logma
+make release-candidate COMPONENT=logma RELEASE_VERSION=2026.10.21.1 \\
+  REPO=xd-dash/logma RELEASE_IMAGE=localhost/logma-provider:candidate \\
+  RELEASE_FLAKE=/workspaces/logma RELEASE_TARGET='#provider-image'
+make release-qualify COMPONENT=logma RELEASE_VERSION=2026.10.21.1 \\
+  RELEASE_GATES='#qualify #qualify-integration'
+```
+
+These are examples, not assertions that the selected Logma flake exposes those targets. The candidate operation requires a clean source checkout and a successful Nix build; the image must already have been imported into Podman. The qualify operation reruns the named Nix apps and checks that source SHA, store output and image identity still match. Release records are written under `~/.local/state/nix-alpine/releases/<component>/` by default. The lock serializes the local release script; it does not prevent unrelated Podman commands from retagging images. Do not deploy by mutable tags or interpret this local ledger as a cross-host release authority.
