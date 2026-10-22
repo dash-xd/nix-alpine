@@ -18,17 +18,21 @@ TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 REPO ?=
 BRANCH ?= main
+FATLINE_REPO ?= dash-xd/agni
+FATLINE_BRANCH ?= codex/local-fatline-nix-alpine-bootstrap
+FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
+	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -65,6 +69,16 @@ image-prune:
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
 	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)"
+# Reuse source synchronization and Nix artifact loading for Fatline's
+# infrastructure images. No registry, service installation, or activation.
+fatline-images:
+	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
+	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#redis-image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#redis-image' SCOPE="$(SCOPE)"
+	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
+
 # Sync source, advance one explicitly named component pin, then run the
 # flake's build, baseline and integration qualification gates. Keep the
 # integration gate's exit status; never reinterpret a nonzero result as green.
