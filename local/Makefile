@@ -188,21 +188,21 @@ ps:
 inspect:
 	podman inspect "$(CONTAINER)"
 show:
-	podman exec "$(CONTAINER)" nix flake show "$(FLAKE_REF)"
+	podman exec "$(CONTAINER)" nix flake show --no-write-lock-file "$(FLAKE_REF)"
 check:
-	podman exec "$(CONTAINER)" nix flake check "$(FLAKE_REF)"
+	podman exec "$(CONTAINER)" nix flake check --no-write-lock-file "$(FLAKE_REF)"
 build:
-	podman exec "$(CONTAINER)" nix build --no-link "$(FLAKE_REF)"
+	podman exec "$(CONTAINER)" nix build --no-write-lock-file --no-link "$(FLAKE_REF)"
 path-info:
-	podman exec "$(CONTAINER)" nix path-info "$(FLAKE_REF)"
+	podman exec "$(CONTAINER)" nix path-info --no-write-lock-file "$(FLAKE_REF)"
 image-load:
 	@bash ./image-store.sh "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
 image-inspect:
 	@podman images --no-trunc
 run:
-	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run "$(FLAKE_REF)" -- $(ARGS)
+	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run --no-write-lock-file "$(FLAKE_REF)" -- $(ARGS)
 develop:
-	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix develop "$(FLAKE_REF)" -c bash
+	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix develop --no-write-lock-file "$(FLAKE_REF)" -c bash
 store:
 	podman volume inspect "$(VOLUME)"
 store-info:
