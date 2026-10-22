@@ -13,6 +13,14 @@ ARGS ?=
 CMD ?= bash
 PROJECTS ?=
 COMPONENT ?= logma
+HASH := \#
+RELEASE_VERSION ?=
+RELEASE_IMAGE ?=
+RELEASE_SOURCE ?= $(WORKSPACES)/$(notdir $(REPO))
+RELEASE_FLAKE ?= $(FLAKE_PATH)
+RELEASE_TARGET ?= $(HASH)provider-image
+RELEASE_GATES ?= $(HASH)qualify $(HASH)qualify-integration
+RELEASE_STATE ?= $(HOME)/.local/state/nix-alpine/releases
 PACKAGE ?= ./...
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
@@ -26,8 +34,11 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: version release-candidate release-qualify fatline-compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make version COMPONENT=logma (next available UTC CalVer in local ledger)"
+	@echo "make release-candidate COMPONENT=logma RELEASE_VERSION=... REPO=owner/repo RELEASE_IMAGE=local/image:tag RELEASE_FLAKE=/workspaces/project RELEASE_TARGET='#provider-image'"
+	@echo "make release-qualify COMPONENT=logma RELEASE_VERSION=... (runs configured Nix gates; refuses failed qualification)"
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
@@ -164,3 +175,16 @@ parallel-build:
 	@set -e; pids=(); failed=0; for project in $(PROJECTS); do \
 	  podman exec "$(CONTAINER)" nix build --no-link "/workspaces/$$project" & pids+=("$$!"); \
 	done; for pid in "$${pids[@]}"; do wait "$$pid" || failed=1; done; exit "$$failed"
+
+# All release state is per-user, per-component and guarded by an exclusive
+# file lock. These targets do not activate services or move mutable channels.
+version:
+	@python3 ./release.py version --component "$(COMPONENT)" --state "$(RELEASE_STATE)"
+
+release-candidate:
+	@test -n "$(RELEASE_VERSION)" && test -n "$(RELEASE_IMAGE)" && test -n "$(REPO)" || { echo "RELEASE_VERSION, RELEASE_IMAGE and REPO are required" >&2; exit 2; }
+	@python3 ./release.py candidate --component "$(COMPONENT)" --version "$(RELEASE_VERSION)" --source "$(RELEASE_SOURCE)" --image "$(RELEASE_IMAGE)" --flake "$(RELEASE_FLAKE)" --target "$(RELEASE_TARGET)" --container "$(CONTAINER)" --state "$(RELEASE_STATE)"
+
+release-qualify:
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required" >&2; exit 2; }
+	@python3 ./release.py qualify --component "$(COMPONENT)" --version "$(RELEASE_VERSION)" --container "$(CONTAINER)" --state "$(RELEASE_STATE)" --gates $(RELEASE_GATES)
