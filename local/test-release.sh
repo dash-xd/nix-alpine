@@ -45,7 +45,7 @@ jq -e '.status == "candidate"' "$state/$component/$version.json" >/dev/null
 if bash ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" >/dev/null 2>&1; then
   echo "FAIL: version rebinding accepted" >&2; exit 1
 fi
-jq -n '{schema:1,gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:1}]}' > "$state/bad.json"
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:1}]}' > "$state/bad.json"
 if bash ./release-ledger.sh qualify "$component" "$version" "$state/bad.json" >/dev/null 2>&1; then
   echo "FAIL: nonzero qualification accepted" >&2; exit 1
 fi
