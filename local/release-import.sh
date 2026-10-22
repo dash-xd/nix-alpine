@@ -19,7 +19,7 @@ printf '%s\n' "$load_result" >&2
 image_id="$(printf '%s\n' "$load_result" | sed -n 's/^Loaded image ID: \(sha256:[a-f0-9]*\)$/\1/p')"
 if [[ -z "$image_id" ]]; then
   # Podman may report only a named image; inspect exactly one reported name.
-  mapfile -t names < <(printf '%s\n' "$load_result" | sed -n 's/^Loaded image(s): //p')
+  mapfile -t names < <(printf '%s\n' "$load_result" | sed -n -E 's/^Loaded image(s)?: //p')
   [[ "${#names[@]}" -eq 1 && -n "${names[0]}" ]] || {
     echo "cannot unambiguously resolve imported image identity" >&2; exit 1;
   }
