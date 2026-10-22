@@ -43,7 +43,9 @@
               aclfile $work/users.acl
               EOF
               redis-server "$work/redis.conf" --daemonize yes --pidfile "$work/redis.pid"
-              for ((attempt = 0; attempt < 100; attempt++)); do
+              attempt=0
+              while (( attempt < 100 )); do
+                attempt=$((attempt + 1))
                 if redis-cli -s "$work/redis.sock" -a admin-secret ping 2>/dev/null | grep -qx PONG; then break; fi
                 sleep 0.05
               done
