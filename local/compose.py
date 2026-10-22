@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 IDENT = re.compile(r"^[a-z][a-z0-9-]*$")
-VERSION = re.compile(r"^[0-9]{4}\\.(?:0[1-9]|1[0-2])\\.(?:0[1-9]|[12][0-9]|3[01])(?:\\.(?:0|[1-9][0-9]*))?$")
+VERSION = re.compile(r"^[0-9]{4}\.(?:0[1-9]|1[0-2])\.(?:0[1-9]|[12][0-9]|3[01])(?:\.(?:0|[1-9][0-9]*))?$")
 IMAGE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 def execute(*cmd):
@@ -32,7 +32,7 @@ def atomic(path, obj):
     try:
         with os.fdopen(fd, "w") as out:
             json.dump(obj, out, sort_keys=True, indent=2)
-            out.write("\\n")
+            out.write("\n")
             out.flush()
             os.fsync(out.fileno())
         os.replace(tmp, path)
