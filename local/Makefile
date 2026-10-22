@@ -41,7 +41,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: fatline-candidate-audit compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
@@ -109,6 +109,22 @@ qualify-component:
 
 # Reuse source synchronization and Nix artifact loading for Fatline's
 # infrastructure images. No registry, service installation, or activation.
+# Read-only candidate audit: confirm that Agni's pinned Nix outputs and the
+# imported OCI candidates are present before establishing release identities.
+# This does not claim qualification or create a release record.
+fatline-candidate-audit:
+	@set -euo pipefail; \
+	  for component in redis nginx; do \
+	    echo "== $component =="; \
+	    podman exec "$(CONTAINER)" nix path-info "/workspaces/$(FATLINE_FLAKE)#$component-image"; \
+	    podman image inspect "localhost/fatline-$component:candidate" --format 'Image ID: {{.Id}}'; \
+	  done; \
+	  echo "== skymill qualified =="; \
+	  podman image inspect "localhost/nix-alpine/skymill:qualified-2026.10.22.2" --format 'Image ID: {{.Id}}'; \
+	  echo "== logma candidate =="; \
+	  podman image inspect "localhost/logma-provider:candidate" --format 'Image ID: {{.Id}}'; \
+	  echo "Audit only: image provenance and qualification gates still required"
+
 fatline-images:
 	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#redis-image' SCOPE="$(SCOPE)"
