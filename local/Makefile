@@ -122,13 +122,13 @@ fatline-images:
 COMPOSE_LEDGER ?= /run/nix-alpine/releases
 compose:
 	@test -n "$(NAME)" || { echo "NAME required" >&2; exit 2; }
-	@podman exec -w /workspaces/nix-alpine/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces --assembly /workspaces/$(ASSEMBLY)
+	@podman exec -w /workspaces/nix-alpine/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces
 
 compose-show:
 	@podman exec "$(CONTAINER)" cat /workspaces/.compositions/$(NAME)/composition.lock.json
 
 compose-check:
-	@$(MAKE) compose NAME="$(NAME)" WITH="" SCOPE="$(SCOPE)" ASSEMBLY="$(ASSEMBLY)" COMPOSE_LEDGER="$(COMPOSE_LEDGER)"
+	@$(MAKE) compose NAME="$(NAME)" WITH="" SCOPE="$(SCOPE)" COMPOSE_LEDGER="$(COMPOSE_LEDGER)"
 
 compose-qualify:
 	@echo "Runtime qualification is not implemented; refusing qualification" >&2
