@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Container-side release selection; the host only invokes this Nix app.
-name= with= ledger= workspace=/workspaces assembly=/workspaces/agni/local/fatline
+name='' ; with='' ; ledger='' ; workspace=/workspaces ; assembly=/workspaces/agni/local/fatline
 while (($#)); do
   case "$1" in
     --name) name="${2:?}"; shift 2 ;;
@@ -55,9 +55,9 @@ if [[ -n "$with" ]]; then
   [[ "$(jq 'keys | sort == ["logma","nginx","redis","skymill"]' <<< "$components")" == true ]] || {
     echo "Fatline requires logma nginx redis skymill" >&2; exit 1;
   }
-  git -C "$assembly" diff --quiet && git -C "$assembly" diff --cached --quiet || {
+  if ! git -C "$assembly" diff --quiet || ! git -C "$assembly" diff --cached --quiet; then
     echo "Assembly source is dirty" >&2; exit 1;
-  }
+  fi
   revision="$(git -C "$assembly" rev-parse HEAD)"
   jq -cn --arg name "$name" --arg rev "$revision" --argjson components "$components"     '{schema:1,name:$name,assembly_sha:$rev,components:$components}' > "$lock.tmp"
   mv "$lock.tmp" "$lock"
@@ -88,7 +88,7 @@ cat > "$root/flake.nix" <<EOF
       config = import ./composition-config.nix;
       components = builtins.fromJSON (builtins.readFile ./images.json);
     in {
-      packages.${system}.default = import ./composition.nix {
+      packages.\${system}.default = import ./composition.nix {
         inherit pkgs config components;
         lib = pkgs.lib;
       };
