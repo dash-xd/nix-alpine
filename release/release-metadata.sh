@@ -11,13 +11,12 @@ component="$2"; version="$3"; source="$4"; flake="$5"
 [[ "$version" =~ ^([0-9]{4})\.(0[1-9]|1[0-2])\.(0[1-9]|[12][0-9]|3[01])(\.(0|[1-9][0-9]*))?$ ]] || {
   echo "invalid CalVer" >&2; exit 2;
 }
-year="${BASH_REMATCH[1]}"; month="${BASH_REMATCH[2]}"; day="${BASH_REMATCH[3]}"
+year="${BASH_REMATCH[1]}"; month="${BASH_REMATCH[2]}"; day="${BASH_REMATCH[3]}"; micro="${BASH_REMATCH[5]:-}"
 # GNU date normalizes invalid dates, so require an exact round trip.
 [[ "$(date -u -d "$year-$month-$day" +%Y.%m.%d 2>/dev/null)" == "$year.$month.$day" ]] || {
   echo "invalid calendar date" >&2; exit 2;
 }
-if [[ -n "${BASH_REMATCH[5]:-}" ]]; then
-  micro="${BASH_REMATCH[5]}"
+if [[ -n "$micro" ]]; then
   [[ "${#micro}" -lt 20 || ( "${#micro}" -eq 20 && "$micro" < "18446744073709551616" ) ]] || {
     echo "micro version exceeds uint64" >&2; exit 2;
   }
