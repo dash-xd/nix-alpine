@@ -9,6 +9,7 @@ on:
       - 'local/test_release.py'
       - 'local/Makefile'
       - 'local/release-*.sh'
+      - 'local/test-release.sh'
       - 'release/**'
       - '.github/workflows/release-contract.yml'
   pull_request:
@@ -32,7 +33,9 @@ jobs:
           python3 -m py_compile local/release.py
           python3 -m unittest discover -s local -p 'test_release.py' -v
       - name: Release shell syntax
-        run: bash -n local/release-import.sh local/release-ledger.sh local/release-qualify.sh release/release-metadata.sh
+        run: bash -n local/release-import.sh local/release-ledger.sh local/release-qualify.sh local/test-release.sh release/release-metadata.sh
+      - name: Release ledger negative and positive contracts
+        run: make -C local test-release
       - name: Make target smoke
         run: |
           make -C local version COMPONENT=smoke-release-contract RELEASE_STATE="$RUNNER_TEMP/releases"
