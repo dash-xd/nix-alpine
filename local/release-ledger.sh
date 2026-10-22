@@ -59,7 +59,7 @@ case "$action" in
     jq -e --arg expected_id "$image_id" --arg expected_source "$(jq -r .source_sha "$record")" --arg expected_output "$(jq -r .nix_output "$record")" \
       '.schema == 1 and .image_id == $expected_id and .source_sha == $expected_source and .nix_output == $expected_output and (.gates | length == 2) and
       .gates[0].name == "qualify" and .gates[1].name == "qualify-integration" and
-      all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$")))' "$evidence" >/dev/null
+      all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$"))))' "$evidence" >/dev/null
     tag="localhost/nix-alpine/$component:qualified-$version"
     if podman image inspect "$tag" >/dev/null 2>&1; then
       echo "qualified tag already exists without qualified record" >&2; exit 1
