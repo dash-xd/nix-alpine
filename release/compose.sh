@@ -28,9 +28,13 @@ if [[ -n "$with" ]]; then
     [[ "$component" =~ ^[a-z][a-z0-9-]*$ ]] || exit 2
     if [[ "$selector" == qualified ]]; then
       # Choose latest qualified CalVer using numeric date/micro sorting.
-      selector="$(find "$ledger/$component" -maxdepth 1 -name '*.json' -type f -print0 2>/dev/null |
-        xargs -0 -r jq -r 'select(.status == "qualified") | .version' |
-        sort -V | tail -1)"
+      if [[ -d "$ledger/$component" ]]; then
+        selector="$(find "$ledger/$component" -maxdepth 1 -name '*.json' -type f -print0 |
+          xargs -0 -r jq -r 'select(.status == "qualified") | .version' |
+          sort -V | tail -1)"
+      else
+        selector=''
+      fi
     fi
     if [[ -z "$selector" ]]; then
       echo "Missing qualified release for $component (selector: $spec)" >&2
