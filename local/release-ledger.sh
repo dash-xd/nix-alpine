@@ -17,6 +17,7 @@ write_json() {
 check_image() {
   local id="$1" tag="$2" got
   got="$(podman image inspect "$tag" --format '{{.Id}}')"
+  [[ "$got" =~ ^[a-f0-9]{64}$ ]] && got="sha256:$got"
   [[ "$got" == "$id" ]] || { echo "image identity mismatch: $tag" >&2; return 1; }
 }
 case "$action" in
