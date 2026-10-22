@@ -14,7 +14,7 @@ archive="$mountpoint${output#/nix}"
 podman unshare test -r "$archive"
 digest="$(podman unshare sha256sum "$archive" | cut -d' ' -f1)"
 # Capture the image ID from Podman's actual load response, never a supplied tag.
-load_result="$(podman unshare podman load -i "$archive")"
+load_result="$(podman load -i "$archive")"
 printf '%s\n' "$load_result" >&2
 image_id="$(printf '%s\n' "$load_result" | sed -n 's/^Loaded image ID: \(sha256:[a-f0-9]*\)$/\1/p')"
 if [[ -z "$image_id" ]]; then
@@ -23,7 +23,7 @@ if [[ -z "$image_id" ]]; then
   [[ "${#names[@]}" -eq 1 && -n "${names[0]}" ]] || {
     echo "cannot unambiguously resolve imported image identity" >&2; exit 1;
   }
-  image_id="$(podman unshare podman image inspect "${names[0]}" --format '{{.Id}}')"
+  image_id="$(podman image inspect "${names[0]}" --format '{{.Id}}')"
 fi
 [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]] || {
   echo "invalid imported image ID: $image_id" >&2; exit 1;
