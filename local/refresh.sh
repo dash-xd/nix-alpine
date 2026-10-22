@@ -18,17 +18,11 @@ if [[ "$force" == "1" ]]; then
   echo "FORCE=1: discarding tracked local changes in $repo"
   git reset --hard "$remote_ref"
 else
-  # Nix previously rewrote tracked flake.lock files during read-only queries.
-  # Restore only those generated lock changes; never discard other edits.
-  mapfile -d '' changed < <(git diff --name-only -z HEAD --)
-  for path in "${changed[@]}"; do
-    if [[ "$path" == flake.lock || "$path" == */flake.lock ]]; then
-      git restore --worktree -- "$path"
-      echo "Restored generated lock change: $path"
-    fi
-  done
+  # Lock changes are candidate dependency updates, not disposable drift.
+  # Never overwrite them during a source refresh.
   if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
     echo "Tracked local changes detected; refusing to overwrite them." >&2
+    echo "If a flake.lock changed, send its contents for upstream review and commit." >&2
     echo "Inspect: git status --short" >&2
     echo "To discard tracked changes: make refresh FORCE=1" >&2
     exit 1
