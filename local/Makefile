@@ -13,6 +13,10 @@ ARGS ?=
 CMD ?= bash
 PROJECTS ?=
 COMPONENT ?= logma
+NAME ?=
+WITH ?=
+COMPOSITIONS ?= $(WORKSPACES)/.compositions
+ASSEMBLY ?= agni/local/fatline
 HASH := \#
 RELEASE_VERSION ?=
 RELEASE_IMAGE ?=
@@ -37,7 +41,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
@@ -53,7 +57,7 @@ help:
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
 	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
-	@echo "make compose FLAKE=agni/local/fatline TARGET='#fatline' (build any composition output; no activation)"
+	@echo "make compose NAME=fatline WITH="skymill@2026.10.22.2 ..." (lock qualified release selection)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -113,13 +117,20 @@ fatline-images:
 	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
 
-# Generic composition: the selected flake owns its dependency graph and output.
-# Source synchronization is explicit (make sync); composition never advances refs,
-# imports images, installs Quadlets, or activates services.
+# Release-aware selection. This does not build or deploy a composition.
 compose:
-	@test "$(FLAKE)" != "." && test -n "$(TARGET)" || { echo "Usage: make compose FLAKE=path TARGET='#output'" >&2; exit 2; }
-	@$(MAKE) build FLAKE="$(FLAKE)" TARGET="$(TARGET)" SCOPE="$(SCOPE)"
-	@$(MAKE) path-info FLAKE="$(FLAKE)" TARGET="$(TARGET)" SCOPE="$(SCOPE)"
+	@test -n "$(NAME)" || { echo "NAME required" >&2; exit 2; }
+	@python3 ./compose.py resolve --name "$(NAME)" --with "$(WITH)" --state "$(RELEASE_STATE)" --compositions "$(COMPOSITIONS)" --assembly "$(ASSEMBLY)"
+
+compose-show:
+	@python3 ./compose.py show --name "$(NAME)" --state "$(RELEASE_STATE)" --compositions "$(COMPOSITIONS)"
+
+compose-check:
+	@python3 ./compose.py verify --name "$(NAME)" --state "$(RELEASE_STATE)" --compositions "$(COMPOSITIONS)"
+
+compose-qualify:
+	@echo "Runtime qualification not yet implemented; refusing qualification" >&2
+	@exit 1
 
 # Sync source, advance one explicitly named component pin, then run the
 # flake's build, baseline and integration qualification gates. Keep the
