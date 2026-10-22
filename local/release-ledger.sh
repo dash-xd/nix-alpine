@@ -70,6 +70,12 @@ case "$action" in
     jq -s --arg tag "$tag" '.[0] + .[1] + {status:"qualified",qualified_tag:$tag}' "$record" "$evidence" | write_json "$record"
     cat "$record"
     ;;
+  inspect)
+    [[ $# == 3 ]] || exit 2
+    version="$3"; record="$root/$version.json"
+    [[ -f "$record" ]] || { echo "release record missing" >&2; exit 1; }
+    jq . "$record"
+    ;;
   fail)
     [[ $# == 4 ]] || exit 2
     version="$3"; evidence="$4"; record="$root/$version.json"
