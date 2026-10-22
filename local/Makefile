@@ -182,11 +182,20 @@ parallel-build:
 # All release state is per-user, per-component and guarded by an exclusive
 # file lock. These targets do not activate services or move mutable channels.
 version:
-	@python3 ./release.py version --component "$(COMPONENT)" --state "$(RELEASE_STATE)"
+	@RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh version "$(COMPONENT)"
 
 release-candidate:
-	@test -n "$(RELEASE_VERSION)" && test -n "$(RELEASE_IMAGE)" && test -n "$(REPO)" || { echo "RELEASE_VERSION, RELEASE_IMAGE and REPO are required" >&2; exit 2; }
-	@python3 ./release.py candidate --component "$(COMPONENT)" --version "$(RELEASE_VERSION)" --source "$(RELEASE_SOURCE)" --image "$(RELEASE_IMAGE)" --flake "$(RELEASE_FLAKE)" --target "$(RELEASE_TARGET)" --container "$(CONTAINER)" --state "$(RELEASE_STATE)"
+	@test -n "$(RELEASE_VERSION)" && test -n "$(REPO)" || { echo "RELEASE_VERSION and REPO are required" >&2; exit 2; }
+	@set -euo pipefail; \
+	  dir="$(RELEASE_STATE)/$(COMPONENT)"; mkdir -p "$$dir"; \
+	  metadata="$$(mktemp "$$dir/.metadata.XXXXXXXX")"; \
+	  imported="$$(mktemp "$$dir/.import.XXXXXXXX")"; \
+	  trap 'rm -f "$$metadata" "$$imported"' EXIT; \
+	  $(MAKE) build FLAKE="$(RELEASE_FLAKE)" TARGET="$(RELEASE_TARGET)" SCOPE="$(SCOPE)"; \
+	  podman exec "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)" >"$$metadata"; \
+	  output="$$(jq -er .nix_output "$$metadata")"; \
+	  bash ./release-import.sh "$(CONTAINER)" "$(VOLUME)" "$$output" "$$imported" >/dev/null; \
+	  RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh candidate "$(COMPONENT)" "$(RELEASE_VERSION)" "$$metadata" "$$imported"
 
 release-qualify:
 	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required" >&2; exit 2; }
