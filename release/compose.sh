@@ -2,19 +2,20 @@
 set -euo pipefail
 
 # Container-side release selection; the host only invokes this Nix app.
-name='' ; with='' ; ledger='' ; workspace=/workspaces ; assembly=/workspaces/agni/local/fatline
+name='' ; with='' ; ledger='' ; workspace=/workspaces ; assembly=/workspaces/nix-alpine/release
 while (($#)); do
   case "$1" in
     --name) name="${2:?}"; shift 2 ;;
     --with) with="${2:?}"; shift 2 ;;
     --ledger) ledger="${2:?}"; shift 2 ;;
     --workspace) workspace="${2:?}"; shift 2 ;;
-    --assembly) assembly="${2:?}"; shift 2 ;;
+    --assembly) echo "--assembly is no longer supported: Fatline topology belongs to Nix-Alpine" >&2; exit 2 ;;
     *) echo "Unknown compose argument: $1" >&2; exit 2 ;;
   esac
 done
 [[ "$name" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "Invalid composition name" >&2; exit 2; }
 [[ -n "$ledger" && -d "$ledger" ]] || { echo "Release ledger must be mounted into nix.xd; no host fallback" >&2; exit 1; }
+[[ "$assembly" == /workspaces/nix-alpine/release ]] || exit 2
 root="$workspace/.compositions/$name"
 mkdir -p "$root"
 lock="$root/composition.lock.json"
@@ -59,24 +60,26 @@ if [[ -n "$with" ]]; then
   [[ "$(jq 'keys | sort == ["logma","nginx","redis","skymill"]' <<< "$components")" == true ]] || {
     echo "Fatline requires logma nginx redis skymill" >&2; exit 1;
   }
-  if ! git -C "$assembly" diff --quiet || ! git -C "$assembly" diff --cached --quiet; then
+  if [[ -n "$(git -C "$assembly" status --porcelain --untracked-files=all)" ]]; then
     echo "Assembly source is dirty" >&2; exit 1;
   fi
   revision="$(git -C "$assembly" rev-parse HEAD)"
   jq -cn --arg name "$name" --arg rev "$revision" --argjson components "$components"     '{schema:1,name:$name,assembly_sha:$rev,components:$components}' > "$lock.tmp"
-  mv "$lock.tmp" "$lock"
+  # Publish the lock only after a successful Nix build.
+  pending_lock="$lock.tmp"
 fi
-[[ -f "$lock" ]] || { echo "Missing lock: supply WITH" >&2; exit 1; }
-[[ "$(git -C "$assembly" rev-parse HEAD)" == "$(jq -r .assembly_sha "$lock")" ]] || {
+active_lock="${pending_lock:-$lock}"
+[[ -f "$active_lock" ]] || { echo "Missing lock: supply WITH" >&2; exit 1; }
+[[ "$(git -C "$assembly" rev-parse HEAD)" == "$(jq -r .assembly_sha "$active_lock")" ]] || {
   echo "Assembly revision drift" >&2; exit 1;
 }
 for component in logma nginx redis skymill; do
-  version="$(jq -r --arg c "$component" '.components[$c].version' "$lock")"
+  version="$(jq -r --arg c "$component" '.components[$c].version' "$active_lock")"
   record="$ledger/$component/$version.json"
-  jq -e --slurpfile current "$record" --arg c "$component" '.components[$c] == $current[0] and $current[0].status == "qualified"' "$lock" >/dev/null
+  jq -e --slurpfile current "$record" --arg c "$component" '.components[$c] == $current[0] and $current[0].status == "qualified"' "$active_lock" >/dev/null
 done
 # Nix consumes an explicit, frozen manifest; never float qualified selectors.
-jq '{redis:.components.redis.qualified_tag,nginx:.components.nginx.qualified_tag,logma:.components.logma.qualified_tag,skymill:.components.skymill.qualified_tag}' "$lock" > "$root/images.json"
+jq '{redis:.components.redis.qualified_tag,nginx:.components.nginx.qualified_tag,logma:.components.logma.qualified_tag,skymill:.components.skymill.qualified_tag}' "$active_lock" > "$root/images.json"
 cp "$assembly/composition.nix" "$root/composition.nix"
 cp "$assembly/composition-config.nix" "$root/composition-config.nix"
 cp "$assembly/flake.lock" "$root/upstream.lock"
@@ -105,5 +108,6 @@ nix flake lock
 nix build .#default --no-link
 out="$(nix path-info .#default)"
 jq -n --arg path "$out" --arg name "$name" '{name:$name,nix_output:$path}' > "$root/output.json"
+if [[ -n "${pending_lock:-}" ]]; then mv "$pending_lock" "$lock"; fi
 printf 'Composition built: %s\n' "$out"
 printf 'Runtime qualification and activation are separate gates.\n'
