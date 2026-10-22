@@ -35,12 +35,11 @@ case "$action" in
       '.nix_output == $out and (.archive_sha256 | test("^[a-f0-9]{64}$")) and (.image_id | test("^sha256:[a-f0-9]{64}$"))' "$imported" >/dev/null
     id="$(jq -r .image_id "$imported")"
     tag="localhost/nix-alpine/$component:candidate-$version"
-    if existing="$(podman image inspect "$tag" --format '{{.Id}}' 2>/dev/null)"; then
-      [[ "$existing" == "$id" ]] || { echo "candidate tag conflict" >&2; exit 1; }
-    else
-      check_image "$id" "$id"
-      podman tag "$id" "$tag"
+    if podman image inspect "$tag" >/dev/null 2>&1; then
+      echo "orphaned or pre-existing candidate tag; refusing unrecorded version" >&2; exit 1
     fi
+    check_image "$id" "$id"
+    podman tag "$id" "$tag"
     check_image "$id" "$tag"
     tmp="$(mktemp "$root/.candidate.XXXXXXXX")"
     trap 'rm -f "$tmp"' EXIT
@@ -61,11 +60,10 @@ case "$action" in
       .gates[0].name == "qualify" and .gates[1].name == "qualify-integration" and
       all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$")))' "$evidence" >/dev/null
     tag="localhost/nix-alpine/$component:qualified-$version"
-    if existing="$(podman image inspect "$tag" --format '{{.Id}}' 2>/dev/null)"; then
-      [[ "$existing" == "$image_id" ]] || { echo "qualified tag conflict" >&2; exit 1; }
-    else
-      podman tag "$image_id" "$tag"
+    if podman image inspect "$tag" >/dev/null 2>&1; then
+      echo "qualified tag already exists without qualified record" >&2; exit 1
     fi
+    podman tag "$image_id" "$tag"
     check_image "$image_id" "$candidate"
     check_image "$image_id" "$tag"
     jq -s --arg tag "$tag" '.[0] + .[1] + {status:"qualified",qualified_tag:$tag}' "$record" "$evidence" | write_json "$record"
