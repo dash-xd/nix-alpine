@@ -57,7 +57,7 @@ help:
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
 	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
-	@echo "make compose NAME=fatline WITH="skymill@2026.10.22.2 ..." (lock qualified release selection)"
+	@echo "make compose NAME=fatline WITH="skymill@2026.10.22.2 ..." (lock and build qualified composition)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -121,6 +121,7 @@ fatline-images:
 compose:
 	@test -n "$(NAME)" || { echo "NAME required" >&2; exit 2; }
 	@python3 ./compose.py resolve --name "$(NAME)" --with "$(WITH)" --state "$(RELEASE_STATE)" --compositions "$(COMPOSITIONS)" --assembly "$(ASSEMBLY)"
+	@python3 ./compose-build.py --name "$(NAME)" --compositions "$(COMPOSITIONS)" --workspaces "$(WORKSPACES)" --container "$(CONTAINER)"
 
 compose-show:
 	@python3 ./compose.py show --name "$(NAME)" --state "$(RELEASE_STATE)" --compositions "$(COMPOSITIONS)"
