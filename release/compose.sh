@@ -21,6 +21,7 @@ lock="$root/composition.lock.json"
 if [[ -n "$with" ]]; then
   [[ ! -e "$lock" ]] || { echo "Composition lock already exists; reuse with WITH omitted" >&2; exit 1; }
   components='{}'
+  missing=0
   for spec in $with; do
     [[ "$spec" == *@* ]] || { echo "Expected component@version: $spec" >&2; exit 2; }
     component="${spec%%@*}"; selector="${spec#*@}"
@@ -30,6 +31,11 @@ if [[ -n "$with" ]]; then
       selector="$(find "$ledger/$component" -maxdepth 1 -name '*.json' -type f -print0 2>/dev/null |
         xargs -0 -r jq -r 'select(.status == "qualified") | .version' |
         sort -V | tail -1)"
+    fi
+    if [[ -z "$selector" ]]; then
+      echo "Missing qualified release for $component (selector: $spec)" >&2
+      missing=1
+      continue
     fi
     [[ "$selector" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$ ]] || { echo "No qualified CalVer for $component" >&2; exit 1; }
     record="$ledger/$component/$selector.json"
@@ -42,6 +48,10 @@ if [[ -n "$with" ]]; then
     components="$(jq -cn --argjson previous "$components" --arg key "$component" --slurpfile record "$record" '
       if $previous[$key] then error("duplicate component") else $previous + {($key): $record[0]} end')"
   done
+  if (( missing != 0 )); then
+    echo "Composition blocked: qualify missing components before locking" >&2
+    exit 1
+  fi
   [[ "$(jq 'keys | sort == ["logma","nginx","redis","skymill"]' <<< "$components")" == true ]] || {
     echo "Fatline requires logma nginx redis skymill" >&2; exit 1;
   }
