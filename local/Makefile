@@ -238,7 +238,7 @@ release-check:
 # Deliberately real local integration: no mocks, runner, registry or artifacts.
 # Existing candidate/qualified tags are rejected by the ledger.
 test-release-integration:
-	@test -n "$(REPO)" && test -n "$(RELEASE_VERSION)" || { echo "REPO and RELEASE_VERSION required" >&2; exit 2; }
+	@test -n "$(REPO)" && test -n "$(RELEASE_VERSION)" && test "$(RELEASE_FLAKE)" != "/workspaces" && test "$(RELEASE_FLAKE)" != "." || { echo "REPO, RELEASE_VERSION, and explicit RELEASE_FLAKE=/workspaces/repo required" >&2; exit 2; }
 	@$(MAKE) release-check SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 	@$(MAKE) release-candidate REPO="$(REPO)" COMPONENT="$(COMPONENT)" RELEASE_VERSION="$(RELEASE_VERSION)" RELEASE_FLAKE="$(RELEASE_FLAKE)" RELEASE_TARGET="$(RELEASE_TARGET)" SCOPE="$(SCOPE)" RELEASE_STATE="$(RELEASE_STATE)"
 	@$(MAKE) release-qualify COMPONENT="$(COMPONENT)" RELEASE_VERSION="$(RELEASE_VERSION)" SCOPE="$(SCOPE)" RELEASE_STATE="$(RELEASE_STATE)"
