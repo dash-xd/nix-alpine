@@ -17,7 +17,8 @@ year="${BASH_REMATCH[1]}"; month="${BASH_REMATCH[2]}"; day="${BASH_REMATCH[3]}";
   echo "invalid calendar date" >&2; exit 2;
 }
 if [[ -n "$micro" ]]; then
-  [[ "${#micro}" -lt 20 || ( "${#micro}" -eq 20 && "$micro" < "18446744073709551616" ) ]] # shellcheck disable=SC2071 || {
+  # shellcheck disable=SC2071
+  [[ "${#micro}" -lt 20 || ( "${#micro}" -eq 20 && "$micro" < "18446744073709551616" ) ]] || {
     echo "micro version exceeds uint64" >&2; exit 2;
   }
 fi
