@@ -2,6 +2,10 @@
 set -Eeuo pipefail
 [[ $# == 4 ]] || { echo "usage: release-qualify.sh COMPONENT VERSION CONTAINER STATE" >&2; exit 2; }
 component="$1"; version="$2"; container="$3"; state="$4"
+case "$component" in
+  redis) gates=(qualify-process qualify-service) ;;
+  *) gates=(qualify qualify-integration) ;;
+esac
 root="$state/$component"; record="$root/$version.json"
 [[ -f "$record" ]] || { echo "candidate record missing" >&2; exit 1; }
 flake="$(jq -er .flake_ref "$record")"
@@ -27,17 +31,35 @@ jq -cn --arg image_id "$image" --arg source_sha "$(jq -r .source_sha "$record")"
 gates_file="$(mktemp "$root/.gates.XXXXXXXX")"; trap 'rm -f "$tmp" "$gates_file"' EXIT
 printf '[' > "$gates_file"
 failed=0
-for gate in qualify qualify-integration; do
+for gate in "${gates[@]}"; do
   log="$evidence_dir/$gate.log"
-  if podman exec -w "$source" "$container" nix run "${source}#$gate" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+  if [[ "$component" == redis && "$gate" == qualify-service ]]; then
+    # Service qualification is host-owned; Nix-Alpine has no Podman socket.
+    # Agni's probe is observational and fails closed until Smoke lifecycle,
+    # socket, ACL and restart-recovery checks are implemented.
+    service_evidence="$evidence_dir/service.json"
+    agni="${FATLINE_AGNI:-$HOME/workspace/nix/agni}"
+    if [[ -n "${FATLINE_QUALIFY_QUADLET:-}" && -n "${FATLINE_QUALIFY_REDIS_CONF:-}" ]]; then
+      if bash "$agni/local/fatline/scripts/qualify-redis-service.sh" "$image" "$service_evidence" "$FATLINE_QUALIFY_QUADLET" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+    else
+      echo "Dedicated Smoke-managed Quadlet and config required for Redis service qualification" > "$log"
+      code=1; failed=1
+    fi
+  else
+    if podman exec -w "$source" "$container" nix run "${source}#$gate" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+  fi
   hash="$(sha256sum "$log" | cut -d' ' -f1)"
-  [[ "$gate" == qualify ]] || printf ',' >> "$gates_file"
+  [[ "$gate" == "${gates[0]}" ]] || printf ',' >> "$gates_file"
   jq -cn --arg name "$gate" --arg sha "$hash" --argjson exit_code "$code" \
     '{name:$name,sha256:$sha,exit_code:$exit_code}' >> "$gates_file"
 done
 printf ']' >> "$gates_file"
 jq --slurpfile gates "$gates_file" '.gates = $gates[0]' "$tmp" > "$tmp.final"
 mv "$tmp.final" "$tmp"
+if [[ "$component" == redis && -s "$evidence_dir/service.json" ]]; then
+  jq --slurpfile service "$evidence_dir/service.json" '.service = $service[0]' "$tmp" > "$tmp.final"
+  mv "$tmp.final" "$tmp"
+fi
 if [[ "$failed" != 0 ]]; then
   RELEASE_STATE="$state" bash "$(dirname "$0")/release-ledger.sh" fail "$component" "$version" "$tmp"
   echo "qualification failed; qualified tag was not created" >&2; exit 1

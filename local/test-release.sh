@@ -58,4 +58,31 @@ printf 'sha256:%064d\n' 3 > "$state/tags/${qualified//\//_}"
 if bash ./release-ledger.sh qualify "$component" "$version" "$state/good.json" >/dev/null 2>&1; then
   echo "FAIL: qualified ledger replay accepted" >&2; exit 1
 fi
+# Redis must never qualify from legacy gate names or process-only evidence.
+redis_meta="$state/redis-meta.json"
+redis_import="$state/redis-import.json"
+jq '.component = "redis"' "$state/metadata.json" > "$redis_meta"
+cp "$state/import.json" "$redis_import"
+bash ./release-ledger.sh candidate redis "$version" "$redis_meta" "$redis_import" >/dev/null
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:0}]}' > "$state/redis-legacy.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-legacy.json" >/dev/null 2>&1; then
+  echo "FAIL: legacy Redis gates accepted" >&2; exit 1
+fi
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-process-only.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-process-only.json" >/dev/null 2>&1; then
+  echo "FAIL: Redis process-only qualification accepted" >&2; exit 1
+fi
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:1}]' "$state/redis-legacy.json" > "$state/redis-failed-service.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-failed-service.json" >/dev/null 2>&1; then
+  echo "FAIL: failed Redis service gate accepted" >&2; exit 1
+fi
+# A complete Redis pair is recognized only if both gates succeeded.
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-good.json"
+# Synthetic evidence tests ledger acceptance, not actual service qualification.
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-good.json" >/dev/null 2>&1; then
+  echo "FAIL: Redis qualified without service identity evidence" >&2; exit 1
+fi
+jq --arg id "$image_id" '.service={schema:1,complete:true,image_id:$id,running_image_id:$id,unit:"fatline-qualify-test.service",container:"fatline-qualify-test",quadlet_sha256:("d"*64),config_sha256:("e"*64)}' "$state/redis-good.json" > "$state/redis-complete.json"
+bash ./release-ledger.sh qualify redis "$version" "$state/redis-complete.json" >/dev/null
+jq -e '.status == "qualified" and (.gates | length == 2) and .gates[1].name == "qualify-service"' "$state/redis/$version.json" >/dev/null
 echo "Release ledger contract tests passed"
