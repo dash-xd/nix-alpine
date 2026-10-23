@@ -30,7 +30,7 @@ if [[ -n "$(git -C "$path" status --porcelain --untracked-files=no)" ]]; then
   exit 1
 fi
 
-git -C "$path" fetch origin "$branch"
+git -C "$path" fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
 if git -C "$path" show-ref --verify --quiet "refs/heads/$branch"; then
   git -C "$path" switch "$branch"
 else
