@@ -76,4 +76,8 @@ jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-
 if bash ./release-ledger.sh qualify redis "$version" "$state/redis-failed-service.json" >/dev/null 2>&1; then
   echo "FAIL: failed Redis service gate accepted" >&2; exit 1
 fi
+# A complete Redis pair is recognized only if both gates succeeded.
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-good.json"
+bash ./release-ledger.sh qualify redis "$version" "$state/redis-good.json" >/dev/null
+jq -e '.status == "qualified" and (.gates | length == 2) and .gates[1].name == "qualify-service"' "$state/redis/$version.json" >/dev/null
 echo "Release ledger contract tests passed"
