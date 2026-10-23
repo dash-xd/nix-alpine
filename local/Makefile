@@ -34,7 +34,10 @@ TOOLCHAIN_SHELL ?= go
 REPO ?=
 BRANCH ?= main
 FATLINE_REPO ?= dash-xd/agni
-FATLINE_BRANCH ?= codex/local-fatline-nix-alpine-bootstrap
+FATLINE_BRANCH ?= codex/fatline-redis-consumer-qualification
+FATLINE_AGNI ?= $(WORKSPACES)/agni
+FATLINE_QUALIFY_QUADLET ?=
+FATLINE_QUALIFY_REDIS_CONF ?=
 FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
@@ -44,7 +47,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 .PHONY: qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
-	@echo "make qualify-service FLAKE=nix-alpine/release/components/redis (currently fail-closed until host service integration)"
+	@echo "make qualify-service FATLINE_QUALIFY_QUADLET=... FATLINE_QUALIFY_REDIS_CONF=... (host-side, fail-closed)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
 	@echo "make release-latest REPO=owner/repo COMPONENT=skymill RELEASE_FLAKE=/workspaces/skymill (auto CalVer + local qualification)"
@@ -58,7 +61,7 @@ help:
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
-	@echo "make fatline-images (sync Agni, build/import Redis and Nginx Nix images; no service activation)"
+	@echo "make fatline-images (build/import Nix-Alpine Redis and Agni Nginx images; no activation)"
 	@echo "make compose NAME=fatline WITH=component@version... (Nix app; requires ledger mount; currently fails closed)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
@@ -113,8 +116,8 @@ qualify-component:
 # infrastructure images. No registry, service installation, or activation.
 fatline-images:
 	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#redis-image' SCOPE="$(SCOPE)"
-	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#redis-image' SCOPE="$(SCOPE)"
+	@$(MAKE) build FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
@@ -155,7 +158,10 @@ diagnose-toolbox:
 qualify-process:
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-process' SCOPE="$(SCOPE)"
 qualify-service:
-	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-service' SCOPE="$(SCOPE)"
+	@test -n "$(FATLINE_QUALIFY_QUADLET)" && test -n "$(FATLINE_QUALIFY_REDIS_CONF)" || { echo "Smoke-managed isolated Quadlet and Redis config paths required" >&2; exit 1; }
+	@bash "$(FATLINE_AGNI)/local/fatline/scripts/qualify-redis-service.sh" \
+	  "$(podman image inspect localhost/fatline-redis:candidate --format '{{.Id}}' | sed -E 's/^(sha256:)?([a-f0-9]{64})$/sha256:\2/')" \
+	  "$(mktemp)" "$(FATLINE_QUALIFY_QUADLET)"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
