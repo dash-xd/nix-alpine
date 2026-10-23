@@ -11,6 +11,11 @@
           name = "localhost/fatline-nginx";
           tag = "candidate";
           contents = [ pkgs.nginx ];
+          extraCommands = ''
+            mkdir -p etc
+            printf 'root:x:0:0:root:/root:/bin/sh\nnobody:x:65534:65534:nobody:/:/sbin/nologin\n' > etc/passwd
+            printf 'root:x:0:\nnogroup:x:65534:\n' > etc/group
+          '';
           config = {
             Entrypoint = [ "${pkgs.nginx}/bin/nginx" ];
             Cmd = [ "-g" "daemon off;" "-c" "/etc/nginx/nginx.conf" ];
