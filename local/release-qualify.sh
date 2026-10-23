@@ -39,7 +39,7 @@ for gate in "${gates[@]}"; do
     smoke="${QUALIFY_SMOKE:-$HOME/workspace/nix/smoke}"
     agni="${QUALIFY_AGNI:-$HOME/workspace/nix/agni}"
     if [[ -f "$smoke/qualification/components/run.sh" ]]; then
-      if bash "$smoke/qualification/components/run.sh" --component redis --agni "$agni" --builder "$container" --evidence "$service_evidence" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+      if bash "$smoke/qualification/components/run.sh" --component redis --agni "$agni" --builder "$container" --image "$candidate" --evidence "$service_evidence" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
     else
       echo "Smoke component runtime qualification entry point missing" > "$log"
       code=1; failed=1
