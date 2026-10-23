@@ -29,9 +29,10 @@
               trap 'rm -rf "$work"' EXIT
               cat > "$work/nginx.conf" <<EOF
               pid $work/nginx.pid;
-              error_log stderr warn;
+              error_log /dev/stderr warn;
               events { worker_connections 128; }
               http {
+                access_log off;
                 server {
                   listen 127.0.0.1:18080;
                   location /health { return 200 "ok"; }
