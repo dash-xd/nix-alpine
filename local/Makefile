@@ -23,7 +23,7 @@ RELEASE_IMAGE ?=
 RELEASE_SOURCE ?= $(WORKSPACES)/$(notdir $(REPO))
 RELEASE_FLAKE ?= $(FLAKE_PATH)
 RELEASE_TARGET ?= $(HASH)provider-image
-RELEASE_GATES ?= $(HASH)qualify $(HASH)qualify-integration
+# Release qualification selects its mandatory gate pair by COMPONENT in release-qualify.sh.
 RELEASE_STATE ?= $(HOME)/.local/state/nix-alpine/releases
 RELEASE_SOURCE_CONTAINER ?= /workspaces/$(notdir $(REPO))
 RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
@@ -51,7 +51,7 @@ help:
 	@echo "make test-release-integration REPO=owner/repo RELEASE_FLAKE=/workspaces/repo RELEASE_VERSION=... (explicit-version integration)"
 	@echo "make version COMPONENT=logma (next available UTC CalVer in local ledger)"
 	@echo "make release-candidate COMPONENT=logma RELEASE_VERSION=... REPO=owner/repo RELEASE_IMAGE=local/image:tag RELEASE_FLAKE=/workspaces/project RELEASE_TARGET='#provider-image'"
-	@echo "make release-qualify COMPONENT=logma RELEASE_VERSION=... (runs configured Nix gates; refuses failed qualification)"
+	@echo "make release-qualify COMPONENT=logma RELEASE_VERSION=... (runs mandatory component gates; refuses failed qualification)"
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
