@@ -159,9 +159,12 @@ qualify-process:
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-process' SCOPE="$(SCOPE)"
 qualify-service:
 	@test -n "$(FATLINE_QUALIFY_QUADLET)" && test -n "$(FATLINE_QUALIFY_REDIS_CONF)" || { echo "Smoke-managed isolated Quadlet and Redis config paths required" >&2; exit 1; }
-	@bash "$(FATLINE_AGNI)/local/fatline/scripts/qualify-redis-service.sh" \
-	  "$(podman image inspect localhost/fatline-redis:candidate --format '{{.Id}}' | sed -E 's/^(sha256:)?([a-f0-9]{64})$/sha256:\2/')" \
-	  "$(mktemp)" "$(FATLINE_QUALIFY_QUADLET)"
+	@set -euo pipefail; \
+	  id="$$(podman image inspect localhost/fatline-redis:candidate --format '{{.Id}}')"; \
+	  [[ "$$id" == sha256:* ]] || id="sha256:$$id"; \
+	  evidence="$$(mktemp)"; trap 'rm -f "$$evidence"' EXIT; \
+	  FATLINE_QUALIFY_REDIS_CONF="$(FATLINE_QUALIFY_REDIS_CONF)" \
+	  bash "$(FATLINE_AGNI)/local/fatline/scripts/qualify-redis-service.sh" "$$id" "$$evidence" "$(FATLINE_QUALIFY_QUADLET)"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
