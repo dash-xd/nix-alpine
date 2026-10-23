@@ -21,7 +21,7 @@
       apps = eachSystem (pkgs:
         let
           check = pkgs.writeShellApplication {
-            name = "fatline-redis-qualify";
+            name = "fatline-redis-qualify-process";
             runtimeInputs = [ pkgs.redis pkgs.coreutils pkgs.gnugrep pkgs.gnused ];
             text = ''
               set -euo pipefail
@@ -57,16 +57,18 @@
             '';
           };
         in {
-          qualify = { type = "app"; program = "${check}/bin/fatline-redis-qualify"; };
+          qualify-process = { type = "app"; program = "${check}/bin/fatline-redis-qualify-process"; };
+          qualify = self.apps.${pkgs.system}.qualify-process;
           # A process-level test cannot substitute for a real Podman/Quadlet
           # integration test of mounts, Unix socket ownership and isolation.
-          qualify-integration = {
+          qualify-service = {
             type = "app";
             program = "${pkgs.writeShellScript "redis-integration-unqualified" ''
               echo "Redis Podman/Quadlet integration gate not yet implemented" >&2
               exit 1
             ''}";
           };
+          qualify-integration = self.apps.${pkgs.system}.qualify-service;
         });
     };
 }
