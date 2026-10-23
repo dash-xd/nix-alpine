@@ -66,6 +66,20 @@ case "$action" in
       '.schema == 1 and .image_id == $expected_id and .source_sha == $expected_source and .nix_output == $expected_output and (.gates | length == 2) and
       .gates[0].name == $first and .gates[1].name == $second and
       all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$")))' "$evidence" >/dev/null
+    if [[ "$component" == redis ]]; then
+      # Redis must carry complete host-side evidence for the exact running image.
+      jq -e --arg id "$image_id" '
+        .service.schema == 1 and .service.complete == true and
+        .service.image_id == $id and .service.running_image_id == $id and
+        (.service.unit | test("^fatline-qualify-[a-z0-9-]+[.]service$")) and
+        (.service.container | test("^fatline-qualify-[a-z0-9-]+$")) and
+        (.service.quadlet_sha256 | test("^[a-f0-9]{64}$")) and
+        (.service.config_sha256 | test("^[a-f0-9]{64}$"))
+      ' "$evidence" >/dev/null || {
+        echo "Redis service evidence incomplete; refusing qualified tag" >&2
+        exit 1
+      }
+    fi
     tag="localhost/nix-alpine/$component:qualified-$version"
     if podman image inspect "$tag" >/dev/null 2>&1; then
       echo "qualified tag already exists without qualified record" >&2; exit 1
