@@ -162,7 +162,7 @@ qualify-service:
 	@test -d "$(QUALIFY_SMOKE)" && test -d "$(QUALIFY_AGNI)" || { echo "Smoke and Agni workspaces required" >&2; exit 2; }
 	@case "$(QUALIFY_COMPONENT)" in redis|logma|skymill|nginx) ;; *) echo "Unsupported qualification component: $(QUALIFY_COMPONENT)" >&2; exit 2;; esac
 	@test -f "$(QUALIFY_SMOKE)/qualification/components/run.sh" || { echo "Smoke's shared component runtime qualification is not implemented; refusing to qualify $(QUALIFY_COMPONENT)" >&2; exit 1; }
-	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)"
+	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)" --image "localhost/fatline-redis:candidate"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
