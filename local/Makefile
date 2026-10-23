@@ -34,10 +34,11 @@ TOOLCHAIN_SHELL ?= go
 REPO ?=
 BRANCH ?= main
 FATLINE_REPO ?= dash-xd/agni
-FATLINE_BRANCH ?= codex/fatline-redis-consumer-qualification
+FATLINE_BRANCH ?= codex/redis-isolated-qualification-artifact
 FATLINE_AGNI ?= $(WORKSPACES)/agni
-FATLINE_QUALIFY_QUADLET ?=
-FATLINE_QUALIFY_REDIS_CONF ?=
+QUALIFY_COMPONENT ?= $(COMPONENT)
+QUALIFY_SMOKE ?= $(WORKSPACES)/smoke
+QUALIFY_AGNI ?= $(WORKSPACES)/agni
 FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
@@ -47,7 +48,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 .PHONY: qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
-	@echo "make qualify-service FATLINE_QUALIFY_QUADLET=... FATLINE_QUALIFY_REDIS_CONF=... (host-side, fail-closed)"
+	@echo "make qualify-service QUALIFY_COMPONENT=redis|logma|skymill|nginx (Smoke-owned runtime gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
 	@echo "make release-latest REPO=owner/repo COMPONENT=skymill RELEASE_FLAKE=/workspaces/skymill (auto CalVer + local qualification)"
@@ -158,13 +159,10 @@ diagnose-toolbox:
 qualify-process:
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-process' SCOPE="$(SCOPE)"
 qualify-service:
-	@test -n "$(FATLINE_QUALIFY_QUADLET)" && test -n "$(FATLINE_QUALIFY_REDIS_CONF)" || { echo "Smoke-managed isolated Quadlet and Redis config paths required" >&2; exit 1; }
-	@set -euo pipefail; \
-	  id="$$(podman image inspect localhost/fatline-redis:candidate --format '{{.Id}}')"; \
-	  [[ "$$id" == sha256:* ]] || id="sha256:$$id"; \
-	  evidence="$$(mktemp)"; trap 'rm -f "$$evidence"' EXIT; \
-	  FATLINE_QUALIFY_REDIS_CONF="$(FATLINE_QUALIFY_REDIS_CONF)" \
-	  bash "$(FATLINE_AGNI)/local/fatline/scripts/qualify-redis-service.sh" "$$id" "$$evidence" "$(FATLINE_QUALIFY_QUADLET)"
+	@test -d "$(QUALIFY_SMOKE)" && test -d "$(QUALIFY_AGNI)" || { echo "Smoke and Agni workspaces required" >&2; exit 2; }
+	@case "$(QUALIFY_COMPONENT)" in redis|logma|skymill|nginx) ;; *) echo "Unsupported qualification component: $(QUALIFY_COMPONENT)" >&2; exit 2;; esac
+	@test -f "$(QUALIFY_SMOKE)/qualification/components/run.sh" || { echo "Smoke's shared component runtime qualification is not implemented; refusing to qualify $(QUALIFY_COMPONENT)" >&2; exit 1; }
+	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)" --image "localhost/fatline-redis:candidate"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.

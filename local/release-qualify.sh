@@ -34,15 +34,14 @@ failed=0
 for gate in "${gates[@]}"; do
   log="$evidence_dir/$gate.log"
   if [[ "$component" == redis && "$gate" == qualify-service ]]; then
-    # Service qualification is host-owned; Nix-Alpine has no Podman socket.
-    # Agni's probe is observational and fails closed until Smoke lifecycle,
-    # socket, ACL and restart-recovery checks are implemented.
+    # Smoke owns the runtime lifecycle and writes evidence for the ledger.
     service_evidence="$evidence_dir/service.json"
-    agni="${FATLINE_AGNI:-$HOME/workspace/nix/agni}"
-    if [[ -n "${FATLINE_QUALIFY_QUADLET:-}" && -n "${FATLINE_QUALIFY_REDIS_CONF:-}" ]]; then
-      if bash "$agni/local/fatline/scripts/qualify-redis-service.sh" "$image" "$service_evidence" "$FATLINE_QUALIFY_QUADLET" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+    smoke="${QUALIFY_SMOKE:-$HOME/workspace/nix/smoke}"
+    agni="${QUALIFY_AGNI:-$HOME/workspace/nix/agni}"
+    if [[ -f "$smoke/qualification/components/run.sh" ]]; then
+      if bash "$smoke/qualification/components/run.sh" --component redis --agni "$agni" --builder "$container" --image "$candidate" --evidence "$service_evidence" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
     else
-      echo "Dedicated Smoke-managed Quadlet and config required for Redis service qualification" > "$log"
+      echo "Smoke component runtime qualification entry point missing" > "$log"
       code=1; failed=1
     fi
   else
