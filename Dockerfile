@@ -6,6 +6,7 @@ RUN apk update && apk add --no-cache \
     coreutils \
     curl \
     gnupg \
+    git \
     shadow \
     sudo \
     tar \

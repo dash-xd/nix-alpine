@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+# Tests the host ledger without requiring a host Nix installation.
+cd "$(dirname "$0")"
+for cmd in jq flock podman; do command -v "$cmd" >/dev/null || { echo "missing $cmd" >&2; exit 2; }; done
+state="$(mktemp -d)"
+trap 'rm -rf "$state"' EXIT
+export RELEASE_STATE="$state"
+component="release-contract"
+version="2026.10.21.1"
+image_id="sha256:$(printf '%064d' 1)"
+tag="localhost/nix-alpine/$component:candidate-$version"
+qualified="localhost/nix-alpine/$component:qualified-$version"
+mkdir "$state/bin"
+# Fake Podman is confined to the test's PATH, with deterministic tag bindings.
+cat > "$state/bin/podman" <<'PODMAN'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+store="${RELEASE_STATE}/tags"
+mkdir -p "$store"
+case "$1 $2" in
+  "image inspect")
+    ref="$3"
+    [[ "$ref" == sha256:* ]] && { [[ "$ref" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1; echo "$ref"; exit 0; }
+    file="$store/${ref//\//_}"
+    [[ -f "$file" ]] || exit 1
+    cat "$file"
+    ;;
+  "tag "*)
+    ref="$2"; dest="$3"
+    [[ "$ref" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+    printf '%s\n' "$ref" > "$store/${dest//\//_}"
+    ;;
+  *) echo "unexpected podman call: $*" >&2; exit 2 ;;
+esac
+PODMAN
+chmod +x "$state/bin/podman"
+export PATH="$state/bin:$PATH"
+jq -n --arg component "$component" --arg version "$version" \
+  --arg source_sha "$(printf '%040d' 1)" --arg flake_lock_sha256 "$(printf '%064d' 2)" \
+  '{schema:1,component:$component,version:$version,source_sha:$source_sha,flake_lock_sha256:$flake_lock_sha256,flake_ref:"/workspaces/example#provider-image",nix_output:"/nix/store/example.tar.gz"}' > "$state/metadata.json"
+jq -n --arg image_id "$image_id" '{image_id:$image_id,nix_output:"/nix/store/example.tar.gz",archive_sha256:("a"*64)}' > "$state/import.json"
+bash ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" > /dev/null
+jq -e '.status == "candidate"' "$state/$component/$version.json" >/dev/null
+if bash ./release-ledger.sh candidate "$component" "$version" "$state/metadata.json" "$state/import.json" >/dev/null 2>&1; then
+  echo "FAIL: version rebinding accepted" >&2; exit 1
+fi
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:1}]}' > "$state/bad.json"
+if bash ./release-ledger.sh qualify "$component" "$version" "$state/bad.json" >/dev/null 2>&1; then
+  echo "FAIL: nonzero qualification accepted" >&2; exit 1
+fi
+[[ ! -f "$state/tags/${qualified//\//_}" ]] || { echo "FAIL: qualified tag was written" >&2; exit 1; }
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:0}]}' > "$state/good.json"
+bash -x ./release-ledger.sh qualify "$component" "$version" "$state/good.json" > /dev/null
+jq -e '.status == "qualified"' "$state/$component/$version.json" >/dev/null
+# Any remapping must be rejected by identity checks.
+printf 'sha256:%064d\n' 3 > "$state/tags/${qualified//\//_}"
+if bash ./release-ledger.sh qualify "$component" "$version" "$state/good.json" >/dev/null 2>&1; then
+  echo "FAIL: qualified ledger replay accepted" >&2; exit 1
+fi
+# Redis must never qualify from legacy gate names or process-only evidence.
+redis_meta="$state/redis-meta.json"
+redis_import="$state/redis-import.json"
+jq '.component = "redis"' "$state/metadata.json" > "$redis_meta"
+cp "$state/import.json" "$redis_import"
+bash ./release-ledger.sh candidate redis "$version" "$redis_meta" "$redis_import" >/dev/null
+jq -n --arg image_id "$image_id" --arg source_sha "$(printf '%040d' 1)" '{schema:1,image_id:$image_id,source_sha:$source_sha,nix_output:"/nix/store/example.tar.gz",gates:[{name:"qualify",sha256:("b"*64),exit_code:0},{name:"qualify-integration",sha256:("c"*64),exit_code:0}]}' > "$state/redis-legacy.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-legacy.json" >/dev/null 2>&1; then
+  echo "FAIL: legacy Redis gates accepted" >&2; exit 1
+fi
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-process-only.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-process-only.json" >/dev/null 2>&1; then
+  echo "FAIL: Redis process-only qualification accepted" >&2; exit 1
+fi
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:1}]' "$state/redis-legacy.json" > "$state/redis-failed-service.json"
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-failed-service.json" >/dev/null 2>&1; then
+  echo "FAIL: failed Redis service gate accepted" >&2; exit 1
+fi
+# A complete Redis pair is recognized only if both gates succeeded.
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-good.json"
+# Synthetic evidence tests ledger acceptance, not actual service qualification.
+if bash ./release-ledger.sh qualify redis "$version" "$state/redis-good.json" >/dev/null 2>&1; then
+  echo "FAIL: Redis qualified without service identity evidence" >&2; exit 1
+fi
+jq --arg id "$image_id" '.service={schema:1,complete:true,image_id:$id,running_image_id:$id,unit:"fatline-qualify-test.service",container:"fatline-qualify-test",quadlet_sha256:("d"*64),config_sha256:("e"*64)}' "$state/redis-good.json" > "$state/redis-complete.json"
+bash ./release-ledger.sh qualify redis "$version" "$state/redis-complete.json" >/dev/null
+jq -e '.status == "qualified" and (.gates | length == 2) and .gates[1].name == "qualify-service"' "$state/redis/$version.json" >/dev/null
+# Nginx must not qualify without the exact systemd-user service evidence.
+jq '.component = "nginx"' "$state/metadata.json" > "$state/nginx-meta.json"
+bash ./release-ledger.sh candidate nginx "$version" "$state/nginx-meta.json" "$state/import.json" >/dev/null
+jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/nginx-gates.json"
+if bash ./release-ledger.sh qualify nginx "$version" "$state/nginx-gates.json" >/dev/null 2>&1; then
+  echo "FAIL: Nginx qualified without service identity evidence" >&2; exit 1
+fi
+jq --arg id "$image_id" '.service={schema:1,complete:true,image_id:$id,running_image_id:$id,unit:"fatline-qualify-nginx-test.service",container:"fatline-qualify-nginx-test",quadlet_sha256:("d"*64),config_sha256:("e"*64)}' "$state/nginx-gates.json" > "$state/nginx-complete.json"
+bash ./release-ledger.sh qualify nginx "$version" "$state/nginx-complete.json" >/dev/null
+jq -e '.status == "qualified" and .gates[1].name == "qualify-service"' "$state/nginx/$version.json" >/dev/null
+echo "Release ledger contract tests passed"
