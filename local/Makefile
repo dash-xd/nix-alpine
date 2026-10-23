@@ -39,6 +39,9 @@ FATLINE_AGNI ?= $(WORKSPACES)/agni
 QUALIFY_COMPONENT ?= $(COMPONENT)
 QUALIFY_IMAGE ?= $(if $(filter nginx,$(QUALIFY_COMPONENT)),localhost/fatline-nginx:candidate,localhost/fatline-redis:candidate)
 QUALIFY_SMOKE ?= $(WORKSPACES)/smoke
+COMPOSITION_REDIS_IMAGE ?= localhost/nix-alpine/redis:qualified-2026.10.23
+COMPOSITION_NGINX_IMAGE ?= localhost/nix-alpine/nginx:qualified-2026.10.23.1
+COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
 QUALIFY_AGNI ?= $(WORKSPACES)/agni
 FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -46,8 +49,9 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
+.PHONY: qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
 	@echo "make qualify-service QUALIFY_COMPONENT=redis|logma|skymill|nginx (Smoke-owned runtime gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
@@ -167,6 +171,11 @@ qualify-service:
 	@case "$(QUALIFY_COMPONENT)" in redis|logma|skymill|nginx) ;; *) echo "Unsupported qualification component: $(QUALIFY_COMPONENT)" >&2; exit 2;; esac
 	@test -f "$(QUALIFY_SMOKE)/qualification/components/run.sh" || { echo "Smoke's shared component runtime qualification is not implemented; refusing to qualify $(QUALIFY_COMPONENT)" >&2; exit 1; }
 	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)" --image "$(QUALIFY_IMAGE)"
+
+# Preflight only: Nix-Alpine builds the Agni composition, host verifies its
+# topology and local image identities. No containers or release tags changed.
+qualify-composition-preflight:
+	@bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
