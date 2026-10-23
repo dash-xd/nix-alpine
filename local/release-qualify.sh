@@ -4,6 +4,7 @@ set -Eeuo pipefail
 component="$1"; version="$2"; container="$3"; state="$4"
 case "$component" in
   redis) gates=(qualify-process qualify-service) ;;
+  nginx) gates=(qualify-process qualify-service) ;;
   *) gates=(qualify qualify-integration) ;;
 esac
 root="$state/$component"; record="$root/$version.json"
@@ -33,13 +34,13 @@ printf '[' > "$gates_file"
 failed=0
 for gate in "${gates[@]}"; do
   log="$evidence_dir/$gate.log"
-  if [[ "$component" == redis && "$gate" == qualify-service ]]; then
+  if [[ ( "$component" == redis || "$component" == nginx ) && "$gate" == qualify-service ]]; then
     # Smoke owns the runtime lifecycle and writes evidence for the ledger.
     service_evidence="$evidence_dir/service.json"
     smoke="${QUALIFY_SMOKE:-$HOME/workspace/nix/smoke}"
     agni="${QUALIFY_AGNI:-$HOME/workspace/nix/agni}"
     if [[ -f "$smoke/qualification/components/run.sh" ]]; then
-      if bash "$smoke/qualification/components/run.sh" --component redis --agni "$agni" --builder "$container" --image "$candidate" --evidence "$service_evidence" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+      if bash "$smoke/qualification/components/run.sh" --component "$component" --agni "$agni" --builder "$container" --image "$candidate" --evidence "$service_evidence" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
     else
       echo "Smoke component runtime qualification entry point missing" > "$log"
       code=1; failed=1
@@ -55,7 +56,7 @@ done
 printf ']' >> "$gates_file"
 jq --slurpfile gates "$gates_file" '.gates = $gates[0]' "$tmp" > "$tmp.final"
 mv "$tmp.final" "$tmp"
-if [[ "$component" == redis && -s "$evidence_dir/service.json" ]]; then
+if [[ ( "$component" == redis || "$component" == nginx ) && -s "$evidence_dir/service.json" ]]; then
   jq --slurpfile service "$evidence_dir/service.json" '.service = $service[0]' "$tmp" > "$tmp.final"
   mv "$tmp.final" "$tmp"
 fi

@@ -58,7 +58,7 @@ case "$action" in
     check_image "$image_id" "$candidate"
     # Required gate set is determined by component, never by supplied evidence.
     case "$component" in
-      redis) first="qualify-process"; second="qualify-service" ;;
+      redis|nginx) first="qualify-process"; second="qualify-service" ;;
       *) first="qualify"; second="qualify-integration" ;;
     esac
     # The gate runner must produce a complete, successful fixed gate set.
@@ -66,8 +66,8 @@ case "$action" in
       '.schema == 1 and .image_id == $expected_id and .source_sha == $expected_source and .nix_output == $expected_output and (.gates | length == 2) and
       .gates[0].name == $first and .gates[1].name == $second and
       all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$")))' "$evidence" >/dev/null
-    if [[ "$component" == redis ]]; then
-      # Redis must carry complete host-side evidence for the exact running image.
+    if [[ "$component" == redis || "$component" == nginx ]]; then
+      # Service-qualified components must carry complete host-side evidence for the exact running image.
       jq -e --arg id "$image_id" '
         .service.schema == 1 and .service.complete == true and
         .service.image_id == $id and .service.running_image_id == $id and
@@ -76,7 +76,7 @@ case "$action" in
         (.service.quadlet_sha256 | test("^[a-f0-9]{64}$")) and
         (.service.config_sha256 | test("^[a-f0-9]{64}$"))
       ' "$evidence" >/dev/null || {
-        echo "Redis service evidence incomplete; refusing qualified tag" >&2
+        echo "Component service evidence incomplete; refusing qualified tag" >&2
         exit 1
       }
     fi
