@@ -56,10 +56,15 @@ case "$action" in
     image_id="$(jq -er .image_id "$record")"
     candidate="$(jq -er .candidate_tag "$record")"
     check_image "$image_id" "$candidate"
+    # Required gate set is determined by component, never by supplied evidence.
+    case "$component" in
+      redis) first="qualify-process"; second="qualify-service" ;;
+      *) first="qualify"; second="qualify-integration" ;;
+    esac
     # The gate runner must produce a complete, successful fixed gate set.
-    jq -e --arg expected_id "$image_id" --arg expected_source "$(jq -r .source_sha "$record")" --arg expected_output "$(jq -r .nix_output "$record")" \
+    jq -e --arg first "$first" --arg second "$second" --arg expected_id "$image_id" --arg expected_source "$(jq -r .source_sha "$record")" --arg expected_output "$(jq -r .nix_output "$record")" \
       '.schema == 1 and .image_id == $expected_id and .source_sha == $expected_source and .nix_output == $expected_output and (.gates | length == 2) and
-      .gates[0].name == "qualify" and .gates[1].name == "qualify-integration" and
+      .gates[0].name == $first and .gates[1].name == $second and
       all(.gates[]; .exit_code == 0 and (.sha256 | test("^[a-f0-9]{64}$")))' "$evidence" >/dev/null
     tag="localhost/nix-alpine/$component:qualified-$version"
     if podman image inspect "$tag" >/dev/null 2>&1; then
