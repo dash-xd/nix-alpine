@@ -78,6 +78,7 @@ if bash ./release-ledger.sh qualify redis "$version" "$state/redis-failed-servic
 fi
 # A complete Redis pair is recognized only if both gates succeeded.
 jq '.gates=[{name:"qualify-process",sha256:("b"*64),exit_code:0},{name:"qualify-service",sha256:("c"*64),exit_code:0}]' "$state/redis-legacy.json" > "$state/redis-good.json"
+# Synthetic evidence tests ledger acceptance, not actual service qualification.
 bash ./release-ledger.sh qualify redis "$version" "$state/redis-good.json" >/dev/null
 jq -e '.status == "qualified" and (.gates | length == 2) and .gates[1].name == "qualify-service"' "$state/redis/$version.json" >/dev/null
 echo "Release ledger contract tests passed"
