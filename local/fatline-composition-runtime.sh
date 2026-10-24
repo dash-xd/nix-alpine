@@ -180,6 +180,8 @@ bootstrap_cli() {
 }
 # Bootstrap the ratelimiter library with a disposable elevated identity.
 bootstrap_functions() {
+# Failed bootstrap containers must never poison a later retry.
+podman rm -f "$bootstrap" >/dev/null 2>&1 || true
 podman run -d --name "$bootstrap" --network "$net" \
   --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
   --mount type=tmpfs,destination=/var/lib/logma/lifecycle,tmpfs-size=4194304,tmpfs-mode=1777 \
@@ -198,6 +200,7 @@ done
 if [[ "$function_ready" != true ]]; then
   echo "Logma ratelimiter function bootstrap failed" >&2
   podman logs "$bootstrap" >&2
+  podman rm -f "$bootstrap" >/dev/null 2>&1 || true
   exit 1
 fi
 podman rm -f "$bootstrap" >/dev/null
@@ -267,6 +270,7 @@ EOF
   [[ "$(systemctl --user is-active "$bootstrap_unit")" == active ]]
   [[ "$(systemctl --user show "$bootstrap_unit" -p Result --value)" == success ]]
   echo "PASS: systemd-user bootstrap oneshot completed"
+  echo "CHECK: bootstrap prerequisite remains successful before Logma startup"
 else
   bootstrap_functions
 fi
@@ -288,7 +292,7 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
-if [[ "$nginx_quadlet_mode" == 1 ]]; then
+if [[ "$nginx_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
   echo "CHECK: systemd-user Nginx Quadlet restart"
   systemctl --user restart "$nginx_quadlet_service"
   [[ "$(systemctl --user is-active "$nginx_quadlet_service")" == active ]]
@@ -299,7 +303,7 @@ if [[ "$nginx_quadlet_mode" == 1 ]]; then
   [[ "$(redis_cli PING)" == PONG ]] || { echo "Nginx proxy did not recover" >&2; false; }
   echo "PASS: systemd-user Nginx Quadlet restart and Unix-socket proxy recovery"
 fi
-if [[ "$redis_quadlet_mode" == 1 ]]; then
+if [[ "$redis_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
   echo "CHECK: systemd-user Redis Quadlet restart"
   systemctl --user restart "$redis_quadlet_service"
   [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
@@ -448,7 +452,11 @@ if [[ "$quadlet_mode" == 1 ]]; then
     echo "PASS: generated systemd dependency edges Logma -> Nginx -> Redis"
   fi
   if [[ "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]]; then
-    echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
+    if [[ "$bootstrap_unit_mode" == 1 ]]; then
+      echo "Bootstrap oneshot prerequisite gate passed; coordinated restart and production ACL remain unqualified."
+    else
+      echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
+    fi
   else
     echo "Logma Quadlet gate passed; remaining components and production ACL remain unqualified."
   fi
