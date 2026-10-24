@@ -580,6 +580,25 @@ if [[ "$quadlet_mode" == 1 ]]; then
       [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after coordinated cold restart: $status" >&2; exit 1; }
       echo "PASS: Logma-only start restored Redis Functions, revoked bootstrap principal and recovered authenticated HTTP"
       if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then
+        if [[ "${COMPOSITION_LIFECYCLE_CRASH_MODE:-0}" == 1 ]]; then
+          # The earlier restart test deliberately deletes restore_deployment.
+          # Establish a separate durable fixture immediately before the crash.
+          restore_deployment="crash-fixture-$"
+          restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
+          lifecycle_url="http://127.0.0.1:$port/lifecycle"
+          echo "CHECK: registering persistent lifecycle fixture immediately before Redis crash"
+          crash_fixture_status=$(curl -sS --max-time 10 -o "$work/crash-fixture-register.json" -w '%{http_code}' \
+            -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
+            --data "$restore_payload" "$lifecycle_url/")
+          [[ "$crash_fixture_status" == 201 ]] ||
+            { echo "FAIL: crash fixture registration HTTP $crash_fixture_status" >&2; cat "$work/crash-fixture-register.json" >&2; exit 1; }
+          grep -Fq '"armed":true' "$work/crash-fixture-register.json" ||
+            { echo "FAIL: crash fixture not armed" >&2; exit 1; }
+          curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/pre-crash-list.json"
+          grep -Fq "\"deployment_id\":\"$restore_deployment\"" "$work/pre-crash-list.json" ||
+            { echo "FAIL: crash fixture not listed before crash" >&2; exit 1; }
+          echo "PASS: durable crash fixture registered and visible before Redis SIGKILL"
+        fi
         echo "CHECK: unexpected Redis crash with Logma remaining active"
         old_redis_id=$(podman inspect "$redis" --format '{{.Id}}')
         old_logma_id=$(podman inspect "$logma" --format '{{.Id}}')
