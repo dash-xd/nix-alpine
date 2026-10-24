@@ -80,7 +80,9 @@ done
 # This is deliberately fail-closed: the provisional ACL may need refinement.
 lifecycle_url="http://127.0.0.1:$port/lifecycle"
 deployment="qualification-$"
-payload=$(printf '{"deployment_id":"%s","policy_name":"sandbox-30d","shutdown_channel":"logma:qualification:shutdown"}' "$deployment")
+# Use a policy code returned by the running Logma build; do not guess enum strings.
+policy_code=$(curl -fsS --max-time 5 -H "X-API-Key: $api_pass" "$url" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert isinstance(p,list) and p, "empty lifecycle policy catalog"; x=next((x for x in p if x.get("duration")=="720h0m0s"),p[-1]); assert str(x.get("policy_code","")).isdigit(), "missing policy code"; print(x["policy_code"])')
+payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$deployment" "$policy_code")
 register_status=$(curl -sS --max-time 10 -o "$work/register.json" -w '%{http_code}' \
   -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
   --data "$payload" "$lifecycle_url/")
