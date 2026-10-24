@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 mkdir -m 777 "$socket"
 # Nix owns the exact Agni Redis/Nginx configuration; no hand-copied proxy config.
-out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths /workspaces/agni/local/fatline#fatline)
+out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths /workspaces/agni/local/fatline#composition-qualification)
 podman cp "$builder:$out/config/redis.conf" "$work/redis.conf"
 podman cp "$builder:$out/config/nginx.conf" "$work/nginx.conf"
 chmod 644 "$work/redis.conf" "$work/nginx.conf"
