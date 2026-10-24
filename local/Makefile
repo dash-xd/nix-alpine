@@ -35,6 +35,7 @@ REPO ?=
 BRANCH ?= main
 FATLINE_REPO ?= dash-xd/agni
 FATLINE_BRANCH ?= codex/redis-isolated-qualification-artifact
+COMPOSITION_AGNI_BRANCH ?= codex/fatline-composition-qualification-config
 FATLINE_AGNI ?= $(WORKSPACES)/agni
 QUALIFY_COMPONENT ?= $(COMPONENT)
 QUALIFY_IMAGE ?= $(if $(filter nginx,$(QUALIFY_COMPONENT)),localhost/fatline-nginx:candidate,localhost/fatline-redis:candidate)
@@ -51,6 +52,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build
 help:
+	@echo "make qualify-composition (sync Agni qualification branch, then preflight and disposable runtime gate)"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
 	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
@@ -174,7 +176,9 @@ qualify-service:
 	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)" --image "$(QUALIFY_IMAGE)"
 
 # Smoke-style disposable runtime gate; Nix owns the configuration artifact.
-qualify-composition: qualify-composition-preflight
+qualify-composition:
+	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)"
+	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 	@bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Preflight only: Nix-Alpine builds the Agni composition, host verifies its
