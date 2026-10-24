@@ -34,7 +34,7 @@ git -C "$path" fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
 if git -C "$path" show-ref --verify --quiet "refs/heads/$branch"; then
   git -C "$path" switch "$branch"
 else
-  git -C "$path" switch -c "$branch" --track "origin/$branch"
+  git -C "$path" switch -c "$branch" "refs/remotes/origin/$branch"
 fi
 git -C "$path" merge --ff-only "origin/$branch"
 echo "Synchronized $repo ($branch): $(git -C "$path" rev-parse --short HEAD)"
