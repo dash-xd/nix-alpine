@@ -495,7 +495,41 @@ if [[ "$quadlet_mode" == 1 ]]; then
       done
       [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after coordinated cold restart: $status" >&2; exit 1; }
       echo "PASS: Logma-only start restored Redis Functions, revoked bootstrap principal and recovered authenticated HTTP"
-      echo "Coordinated cold restart gate passed; live Redis restart and production ACL remain unqualified."
+      if [[ "${COMPOSITION_LIVE_REDIS_RECOVERY_MODE:-0}" == 1 ]]; then
+        echo "CHECK: coordinated recovery after Redis restart with Logma previously active"
+        # Explicit orchestration is required: Requires/After alone do not
+        # propagate a running Redis service's restart to dependent services.
+        systemctl --user stop "$quadlet_service"
+        systemctl --user stop "$bootstrap_unit"
+        systemctl --user restart "$redis_quadlet_service"
+        [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
+        for i in $(seq 1 60); do
+          [[ "$(redis_cli PING 2>/dev/null)" == PONG ]] && break
+          sleep .25
+        done
+        [[ "$(redis_cli PING)" == PONG ]]
+        [[ -z "$(redis_cli FUNCTION LIST)" ]] || { echo "Redis Functions survived RAM-only restart unexpectedly" >&2; exit 1; }
+        echo "PASS: Redis restart erased Functions; Logma stopped before re-bootstrap"
+        systemctl --user start "$quadlet_service"
+        for unit in "$redis_quadlet_service" "$nginx_quadlet_service" "$bootstrap_unit" "$quadlet_service"; do
+          [[ "$(systemctl --user is-active "$unit")" == active ]] || { echo "Recovery unit not active: $unit" >&2; exit 1; }
+        done
+        [[ "$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1)" != *"Function not found"* ]]
+        [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]]
+        port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
+        [[ "$port" =~ ^[0-9]+$ ]]
+        status=""
+        for i in $(seq 1 60); do
+          status=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H "X-API-Key: $api_pass" "http://127.0.0.1:$port/lifecycle/policies" 2>/dev/null || true)
+          [[ "$status" == 200 ]] && break
+          sleep .25
+        done
+        [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after Redis recovery: $status" >&2; exit 1; }
+        echo "PASS: coordinated Redis restart restored Functions and Logma HTTP with bootstrap identity revoked"
+        echo "Operator-coordinated live Redis recovery passed; automatic restart propagation and production ACL remain unqualified."
+      else
+        echo "Coordinated cold restart gate passed; live Redis restart and production ACL remain unqualified."
+      fi
     elif [[ "$bootstrap_unit_mode" == 1 ]]; then
       echo "Bootstrap oneshot prerequisite gate passed; coordinated restart and production ACL remain unqualified."
     else
