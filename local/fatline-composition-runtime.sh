@@ -466,7 +466,37 @@ if [[ "$quadlet_mode" == 1 ]]; then
     fi
   fi
   if [[ "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]]; then
-    if [[ "$bootstrap_unit_mode" == 1 ]]; then
+    if [[ "$bootstrap_unit_mode" == 1 && "${COMPOSITION_COORDINATED_RESTART_MODE:-0}" == 1 ]]; then
+      echo "CHECK: coordinated cold restart, Logma as sole systemd entrypoint"
+      systemctl --user stop "$quadlet_service"
+      systemctl --user stop "$bootstrap_unit"
+      systemctl --user stop "$nginx_quadlet_service"
+      systemctl --user stop "$redis_quadlet_service"
+      [[ "$(systemctl --user is-active "$redis_quadlet_service")" != active ]]
+      [[ "$(systemctl --user is-active "$bootstrap_unit")" != active ]]
+      echo "CHECK: starting Logma pulls Redis, Nginx and bootstrap prerequisites"
+      systemctl --user start "$quadlet_service"
+      for unit in "$redis_quadlet_service" "$nginx_quadlet_service" "$bootstrap_unit" "$quadlet_service"; do
+        [[ "$(systemctl --user is-active "$unit")" == active ]] || {
+          echo "Required systemd unit not active: $unit" >&2
+          exit 1
+        }
+      done
+      [[ "$(redis_cli PING)" == PONG ]]
+      [[ "$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1)" != *"Function not found"* ]]
+      [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]]
+      port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
+      [[ "$port" =~ ^[0-9]+$ ]]
+      status=""
+      for i in $(seq 1 60); do
+        status=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H "X-API-Key: $api_pass" "http://127.0.0.1:$port/lifecycle/policies" 2>/dev/null || true)
+        [[ "$status" == 200 ]] && break
+        sleep .25
+      done
+      [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after coordinated cold restart: $status" >&2; exit 1; }
+      echo "PASS: Logma-only start restored Redis Functions, revoked bootstrap principal and recovered authenticated HTTP"
+      echo "Coordinated cold restart gate passed; live Redis restart and production ACL remain unqualified."
+    elif [[ "$bootstrap_unit_mode" == 1 ]]; then
       echo "Bootstrap oneshot prerequisite gate passed; coordinated restart and production ACL remain unqualified."
     else
       echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
