@@ -287,18 +287,19 @@ EOF
     cat >> "$work/reconcile-entry.sh" <<'EOF'
 # The privileged principal is available only on a freshly started Redis.
 # Inspect the exact library instead of treating arbitrary FCALL errors as readiness.
-listing=$(bootstrap_cli --raw FUNCTION LIST 2>&1) || {
-  if [[ "$listing" == *WRONGPASS* || "$listing" == *NOAUTH* ]]; then
-    # Bootstrap already revoked: verify the application principal can call
-    # the known Function; an argument error means the Function was resolved.
-    probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1) && exit 0
-    [[ "$probe" == *"wrong number of arguments"* ]] && exit 0
-    echo "FAIL: bootstrap revoked but Function is not callable: $probe" >&2
-    exit 1
-  fi
+listing=$(bootstrap_cli --raw FUNCTION LIST 2>&1) || true
+if [[ "$listing" == *WRONGPASS* || "$listing" == *NOAUTH* ]]; then
+  # Bootstrap already revoked: the application principal must resolve
+  # the known Function; never accept unrelated Redis errors.
+  probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1) && exit 0
+  [[ "$probe" == *"wrong number of arguments"* ]] && exit 0
+  echo "FAIL: bootstrap revoked but Function is not callable: $probe" >&2
+  exit 1
+fi
+if [[ "$listing" == *NOPERM* || "$listing" == *ERR* || "$listing" == *"Could not connect"* ]]; then
   echo "FAIL: cannot inspect Redis Functions: $listing" >&2
   exit 1
-}
+fi
 if [[ "$listing" == *dashxd_ratelimit* ]]; then
   [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]]
   echo "PASS: existing Functions verified and bootstrap principal revoked"
