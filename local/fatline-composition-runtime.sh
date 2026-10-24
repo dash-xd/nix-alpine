@@ -135,7 +135,11 @@ if [[ "$nginx_quadlet_mode" == 1 ]]; then
 Description=Disposable Fatline Nginx Quadlet qualification
 EOF
   if [[ "$redis_quadlet_mode" == 1 ]]; then
-    printf 'Requires=%s\nAfter=%s\n' "$redis_quadlet_service" "$redis_quadlet_service" >> "$nginx_quadlet_file"
+    if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then
+      printf 'Wants=%s\nAfter=%s\n' "$redis_quadlet_service" "$redis_quadlet_service" >> "$nginx_quadlet_file"
+    else
+      printf 'Requires=%s\nAfter=%s\n' "$redis_quadlet_service" "$redis_quadlet_service" >> "$nginx_quadlet_file"
+    fi
   fi
   cat >> "$nginx_quadlet_file" <<EOF
 
@@ -249,7 +253,7 @@ EOF
   cat > "$bootstrap_unit_file" <<EOF
 [Unit]
 Description=Disposable Fatline Redis Function bootstrap
-Requires=$nginx_quadlet_service
+$(if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then printf 'Wants=%s' "$nginx_quadlet_service"; else printf 'Requires=%s' "$nginx_quadlet_service"; fi)
 After=$nginx_quadlet_service
 
 [Service]
@@ -328,7 +332,12 @@ if [[ "$quadlet_mode" == 1 ]]; then
 Description=Disposable Fatline Logma Quadlet qualification
 EOF
   if [[ "$bootstrap_unit_mode" == 1 ]]; then
-    printf 'Requires=%s\nAfter=%s\n' "$bootstrap_unit" "$bootstrap_unit" >> "$quadlet_file"
+    if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then
+      # Order initial bootstrap without coupling Logma's lifetime to Redis.
+      printf 'Wants=%s\nAfter=%s\n' "$bootstrap_unit" "$bootstrap_unit" >> "$quadlet_file"
+    else
+      printf 'Requires=%s\nAfter=%s\n' "$bootstrap_unit" "$bootstrap_unit" >> "$quadlet_file"
+    fi
   elif [[ "$nginx_quadlet_mode" == 1 ]]; then
     printf 'Requires=%s\nAfter=%s\n' "$nginx_quadlet_service" "$nginx_quadlet_service" >> "$quadlet_file"
   fi
