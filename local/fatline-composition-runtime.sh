@@ -118,6 +118,7 @@ bootstrap_cli() {
     "$redis_image" -h 127.0.0.1 -p 6379 --user bootstrap -a "$bootstrap_pass" --no-auth-warning "$@"
 }
 # Bootstrap the ratelimiter library with a disposable elevated identity.
+bootstrap_functions() {
 podman run -d --name "$bootstrap" --network "$net" \
   --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
   --mount type=tmpfs,destination=/var/lib/logma/lifecycle,tmpfs-size=4194304,tmpfs-mode=1777 \
@@ -141,6 +142,8 @@ fi
 podman rm -f "$bootstrap" >/dev/null
 [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]] || { echo "Failed to revoke bootstrap identity" >&2; exit 1; }
 [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "Bootstrap identity still authenticates" >&2; exit 1; }
+}
+bootstrap_functions
 echo "PASS: ratelimiter functions installed; bootstrap identity revoked"
 for i in $(seq 1 60); do
   if [[ "$(redis_cli PING 2>/dev/null)" == PONG ]]; then break; fi
@@ -162,6 +165,10 @@ if [[ "$redis_quadlet_mode" == 1 ]]; then
   done
   [[ "$(redis_cli PING)" == PONG ]] || { echo "Redis did not recover through Nginx" >&2; false; }
   [[ "$(redis_cli SET logma:after-restart ok)" == OK ]]
+  echo "CHECK: reinstalling Redis Functions after RAM-only Redis restart"
+  bootstrap_functions
+  [[ "$(redis_cli PING)" == PONG ]]
+  echo "PASS: Redis Functions reinstalled and bootstrap principal revoked after restart"
   echo "PASS: systemd-user Redis Quadlet restart and Nginx proxy recovery"
 fi
 mkdir -m 777 "$work/lifecycle-state"
