@@ -25,6 +25,17 @@ cleanup() {
   podman network rm "$net" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
+diagnose_failure() {
+  local code=$?
+  echo "FAIL: Quadlet composition at line $1 (exit $code)" >&2
+  if [[ "${quadlet_mode}" == 1 ]]; then
+    systemctl --user --no-pager status "$quadlet_service" >&2 || true
+    journalctl --user -u "$quadlet_service" -n 35 --no-pager >&2 || true
+    podman ps -a --filter "name=$logma" >&2 || true
+  fi
+  exit "$code"
+}
+trap 'diagnose_failure "$LINENO"' ERR
 trap cleanup EXIT
 mkdir -m 777 "$socket"
 # Nix owns the exact Agni Redis/Nginx configuration; no hand-copied proxy config.
@@ -177,13 +188,16 @@ echo "PASS: Logma lifecycle register/arm, tick and remove via Redis"
 # Leave a durable registration in the mounted state directory across restart.
 restore_deployment="restore-$"
 restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
+echo "CHECK: registering durable lifecycle fixture"
 restore_status=$(curl -sS --max-time 10 -o "$work/restore-register.json" -w '%{http_code}' \
   -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
   --data "$restore_payload" "$lifecycle_url/")
 [[ "$restore_status" == 201 ]] || { echo "Restore fixture registration failed: HTTP $restore_status" >&2; cat "$work/restore-register.json" >&2; exit 1; }
 grep -Fq '"armed":true' "$work/restore-register.json" || { echo "Restore fixture was not armed" >&2; exit 1; }
+echo "CHECK: Logma image identity before restart"
 logma_id=$(podman image inspect "$logma_image" --format '{{.Id}}')
-[[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
+[[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]] || { echo "Logma image identity mismatch: $(podman inspect "$logma" --format '{{.Image}}') vs $logma_id" >&2; false; }
+echo "CHECK: restarting Logma through selected supervisor"
 if [[ "$quadlet_mode" == 1 ]]; then
   systemctl --user restart "$quadlet_service"
   [[ "$(systemctl --user is-active "$quadlet_service")" == active ]]
