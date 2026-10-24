@@ -14,6 +14,7 @@ bootstrap="$scope-bootstrap"
 quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
 redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
 nginx_quadlet_mode=${COMPOSITION_NGINX_QUADLET_MODE:-0}
+cold_start_mode=${COMPOSITION_COLD_START_MODE:-0}
 nginx_quadlet_file="$HOME/.config/containers/systemd/$scope-nginx.container"
 nginx_quadlet_service="$scope-nginx.service"
 redis_quadlet_file="$HOME/.config/containers/systemd/$scope-redis.container"
@@ -191,7 +192,30 @@ podman rm -f "$bootstrap" >/dev/null
 [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]] || { echo "Failed to revoke bootstrap identity" >&2; exit 1; }
 [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "Bootstrap identity still authenticates" >&2; exit 1; }
 }
+if [[ "$cold_start_mode" == 1 ]]; then
+  [[ "$quadlet_mode" == 1 && "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]] || {
+    echo "Cold-start mode requires all three Quadlet modes" >&2; exit 1;
+  }
+  echo "CHECK: cold-start Redis readiness before function bootstrap"
+  for i in $(seq 1 60); do
+    [[ "$(redis_cli PING 2>/dev/null)" == PONG ]] && break
+    sleep .25
+  done
+  [[ "$(redis_cli PING)" == PONG ]]
+  function_list=$(bootstrap_cli FUNCTION LIST)
+  [[ "$function_list" != *dashxd_ratelimit* ]] || {
+    echo "Expected empty function library before cold-start bootstrap" >&2; exit 1;
+  }
+  echo "PASS: cold-start Redis reachable, function library absent before bootstrap"
+fi
 bootstrap_functions
+if [[ "$cold_start_mode" == 1 ]]; then
+  [[ "$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1)" != *"Function not found"* ]] || {
+    echo "Function missing after bootstrap" >&2; exit 1;
+  }
+  [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]]
+  echo "PASS: cold-start function bootstrap completed and privileged identity revoked before Logma"
+fi
 echo "PASS: ratelimiter functions installed; bootstrap identity revoked"
 for i in $(seq 1 60); do
   if [[ "$(redis_cli PING 2>/dev/null)" == PONG ]]; then break; fi
