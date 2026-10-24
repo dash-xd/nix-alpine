@@ -632,10 +632,28 @@ if [[ "$quadlet_mode" == 1 ]]; then
               { echo "FAIL: Logma identity changed before lifecycle recovery" >&2; exit 1; }
             # A pre-crash registration cannot be presumed present in RAM-only Redis.
             # Exercise the existing durable fixture through the HTTP API first.
-            recovered_list_status=$(curl -sS --max-time 10 -o "$work/crash-list.json" -w '%{http_code}' \
-              -H "X-API-Key: $api_pass" "$lifecycle_url/" || true)
-            [[ "$recovered_list_status" == 200 ]] ||
-              { echo "FAIL: lifecycle listing after Redis crash returned HTTP $recovered_list_status" >&2; cat "$work/crash-list.json" >&2 || true; exit 1; }
+            echo "CHECK: Logma HTTP transport after Redis Function restoration"
+            echo "INFO: Logma container=$old_logma_id port=$port endpoint=$lifecycle_url/"
+            recovered_list_status=000
+            for attempt in $(seq 1 20); do
+              [[ "$(podman inspect "$logma" --format '{{.Id}}' 2>/dev/null || true)" == "$old_logma_id" ]] ||
+                { echo "FAIL: Logma container changed during HTTP recovery" >&2; exit 1; }
+              recovered_list_status=$(curl -sS --connect-timeout 2 --max-time 5 -o "$work/crash-list.json" -w '%{http_code}' \
+                -H "X-API-Key: $api_pass" "$lifecycle_url/" 2>"$work/crash-curl.err" || true)
+              [[ "$recovered_list_status" == 200 ]] && break
+              # Retry transport failures while retaining the same process identity.
+              [[ "$recovered_list_status" == 000 ]] || break
+              sleep .5
+            done
+            if [[ "$recovered_list_status" != 200 ]]; then
+              echo "FAIL: lifecycle listing after Redis crash returned HTTP $recovered_list_status" >&2
+              cat "$work/crash-curl.err" >&2 || true
+              cat "$work/crash-list.json" >&2 || true
+              podman inspect "$logma" --format 'Logma state={{json .State}}' >&2 || true
+              podman logs --tail 100 "$logma" >&2 || true
+              systemctl --user --no-pager -l status "$quadlet_service" >&2 || true
+              exit 1
+            fi
             if ! grep -Fq "\"deployment_id\":\"$restore_deployment\"" "$work/crash-list.json"; then
               echo "FAIL: durable lifecycle fixture missing after Redis crash; state replay is not qualified" >&2
               cat "$work/crash-list.json" >&2
