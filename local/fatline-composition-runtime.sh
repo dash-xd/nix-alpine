@@ -495,6 +495,31 @@ if [[ "$quadlet_mode" == 1 ]]; then
       done
       [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after coordinated cold restart: $status" >&2; exit 1; }
       echo "PASS: Logma-only start restored Redis Functions, revoked bootstrap principal and recovered authenticated HTTP"
+      if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then
+        echo "CHECK: unexpected Redis crash with Logma remaining active"
+        old_redis_id=$(podman inspect "$redis" --format '{{.Id}}')
+        old_logma_id=$(podman inspect "$logma" --format '{{.Id}}')
+        podman kill --signal KILL "$redis" >/dev/null
+        restarted=false
+        for i in $(seq 1 120); do
+          new_redis_id=$(podman inspect "$redis" --format '{{.Id}}' 2>/dev/null || true)
+          if [[ -n "$new_redis_id" && "$new_redis_id" != "$old_redis_id" ]] &&
+             [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]] &&
+             [[ "$(redis_cli PING 2>/dev/null)" == PONG ]]; then
+            restarted=true
+            break
+          fi
+          sleep .25
+        done
+        [[ "$restarted" == true ]] || { echo "FAIL: systemd did not restore Redis after SIGKILL" >&2; exit 1; }
+        [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
+          { echo "FAIL: Logma was replaced during Redis crash" >&2; exit 1; }
+        function_listing=$(bootstrap_cli --raw FUNCTION LIST)
+        [[ -z "$function_listing" ]] ||
+          { printf 'FAIL: expected empty Redis Function library after crash, got: %s\n' "$function_listing" >&2; exit 1; }
+        echo "PASS: systemd restarted Redis after SIGKILL; Logma container remained unchanged; RAM-only Functions absent"
+        echo "Crash baseline passed; automatic Function reconciliation and Logma readiness remain unqualified."
+      fi
       if [[ "${COMPOSITION_LIVE_REDIS_RECOVERY_MODE:-0}" == 1 ]]; then
         echo "CHECK: coordinated recovery after Redis restart with Logma previously active"
         # Explicit orchestration is required: Requires/After alone do not
