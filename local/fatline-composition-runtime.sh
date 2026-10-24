@@ -508,7 +508,17 @@ if [[ "$quadlet_mode" == 1 ]]; then
           sleep .25
         done
         [[ "$(redis_cli PING)" == PONG ]]
-        [[ -z "$(redis_cli FUNCTION LIST)" ]] || { echo "Redis Functions survived RAM-only restart unexpectedly" >&2; exit 1; }
+        # A fresh Redis instance must have no Functions; capture evidence if not.
+        function_listing=$(redis_cli --raw FUNCTION LIST)
+        if [[ -n "$function_listing" ]]; then
+          echo "FAIL: Redis Functions present after restart; diagnosing process replacement and bootstrap activation" >&2
+          printf 'Redis Function listing:\n%s\n' "$function_listing" >&2
+          systemctl --user show "$redis_quadlet_service" -p InvocationID -p ActiveEnterTimestamp -p MainPID >&2
+          systemctl --user show "$bootstrap_unit" -p ActiveState -p InvocationID -p ActiveEnterTimestamp -p Result >&2
+          podman inspect "$redis" --format 'Redis container={{.Id}} started={{.State.StartedAt}}' >&2 || true
+          redis_cli INFO server | grep -E '^(run_id|uptime_in_seconds):' >&2 || true
+          exit 1
+        fi
         echo "PASS: Redis restart erased Functions; Logma stopped before re-bootstrap"
         systemctl --user start "$quadlet_service"
         for unit in "$redis_quadlet_service" "$nginx_quadlet_service" "$bootstrap_unit" "$quadlet_service"; do
