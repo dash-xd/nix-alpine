@@ -632,6 +632,13 @@ if [[ "$quadlet_mode" == 1 ]]; then
               { echo "FAIL: Logma identity changed before lifecycle recovery" >&2; exit 1; }
             # A pre-crash registration cannot be presumed present in RAM-only Redis.
             # Exercise the existing durable fixture through the HTTP API first.
+            # The coordinated restart replaced Logma and its ephemeral host port.
+            # Resolve the current published port rather than reusing lifecycle_url.
+            port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
+            [[ "$port" =~ ^[0-9]+$ ]] ||
+              { echo "FAIL: cannot resolve Logma HTTP port after coordinated restart" >&2; exit 1; }
+            url="http://127.0.0.1:$port/lifecycle/policies"
+            lifecycle_url="http://127.0.0.1:$port/lifecycle"
             echo "CHECK: Logma HTTP transport after Redis Function restoration"
             echo "INFO: Logma container=$old_logma_id port=$port endpoint=$lifecycle_url/"
             recovered_list_status=000
