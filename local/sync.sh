@@ -4,12 +4,14 @@ set -euo pipefail
 repo="${1:?Usage: sync.sh owner/repo branch [workspaces]}"
 branch="${2:?Missing branch}"
 workspaces="${3:-$HOME/workspace/nix}"
+checkout_name="${4:-${repo#*/}}"
+[[ "$checkout_name" =~ ^[A-Za-z0-9_.-]+$ && "$checkout_name" != "." && "$checkout_name" != ".." ]] || { echo "Invalid checkout name: $checkout_name" >&2; exit 2; }
 
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Invalid repository: $repo" >&2; exit 2; }
 [[ "$branch" != -* && "$branch" != *..* && "$branch" != *' '* ]] || { echo "Invalid branch: $branch" >&2; exit 2; }
 git check-ref-format --branch "$branch" >/dev/null
 
-name="${repo#*/}"
+name="$checkout_name"
 path="$workspaces/$name"
 mkdir -p "$workspaces"
 if [[ ! -e "$path" ]]; then
@@ -34,7 +36,7 @@ git -C "$path" fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
 if git -C "$path" show-ref --verify --quiet "refs/heads/$branch"; then
   git -C "$path" switch "$branch"
 else
-  git -C "$path" switch -c "$branch" --track "origin/$branch"
+  git -C "$path" switch -c "$branch" "refs/remotes/origin/$branch"
 fi
 git -C "$path" merge --ff-only "origin/$branch"
 echo "Synchronized $repo ($branch): $(git -C "$path" rev-parse --short HEAD)"
