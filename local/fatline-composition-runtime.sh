@@ -12,10 +12,18 @@ nginx="$scope-nginx"
 logma="$scope-logma"
 bootstrap="$scope-bootstrap"
 quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
+redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
+redis_quadlet_file="$HOME/.config/containers/systemd/$scope-redis.container"
+redis_quadlet_service="$scope-redis.service"
 quadlet_dir="$HOME/.config/containers/systemd"
 quadlet_file="$quadlet_dir/$scope-logma.container"
 quadlet_service="$scope-logma.service"
 cleanup() {
+  if [[ "$redis_quadlet_mode" == 1 ]]; then
+    systemctl --user stop "$redis_quadlet_service" >/dev/null 2>&1 || true
+    rm -f "$redis_quadlet_file"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
   if [[ "$quadlet_mode" == 1 ]]; then
     systemctl --user stop "$quadlet_service" >/dev/null 2>&1 || true
     rm -f "$quadlet_file"
@@ -28,6 +36,10 @@ cleanup() {
 diagnose_failure() {
   local code=$?
   echo "FAIL: Quadlet composition at line $1 (exit $code)" >&2
+  if [[ "${redis_quadlet_mode}" == 1 ]]; then
+    systemctl --user --no-pager status "$redis_quadlet_service" >&2 || true
+    journalctl --user -u "$redis_quadlet_service" -n 35 --no-pager >&2 || true
+  fi
   if [[ "${quadlet_mode}" == 1 ]]; then
     systemctl --user --no-pager status "$quadlet_service" >&2 || true
     journalctl --user -u "$quadlet_service" -n 35 --no-pager >&2 || true
@@ -52,12 +64,42 @@ printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~su
 chmod 644 "$work/users.acl"
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
-podman run -d --name "$redis" --network none --user 65534:65534 \
-  --read-only --cap-drop ALL --security-opt no-new-privileges \
-  -v "$socket:/run/redis" \
-  -v "$work/redis.conf:/etc/redis/redis.conf:ro" \
-  -v "$work/users.acl:/etc/redis/users.acl:ro" \
-  "$redis_image" >/dev/null
+if [[ "$redis_quadlet_mode" == 1 ]]; then
+  mkdir -p "$quadlet_dir"
+  [[ ! -e "$redis_quadlet_file" ]] || { echo "Refusing existing Quadlet: $redis_quadlet_file" >&2; exit 1; }
+  cat > "$redis_quadlet_file" <<EOF
+[Unit]
+Description=Disposable Fatline Redis Quadlet qualification
+
+[Container]
+Image=$redis_image
+ContainerName=$redis
+Network=none
+User=65534:65534
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+Volume=$socket:/run/redis
+Volume=$work/redis.conf:/etc/redis/redis.conf:ro
+Volume=$work/users.acl:/etc/redis/users.acl:ro
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=90
+
+EOF
+  chmod 600 "$redis_quadlet_file"
+  systemctl --user daemon-reload
+  systemctl --user start "$redis_quadlet_service"
+  [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
+else
+  podman run -d --name "$redis" --network none --user 65534:65534 \
+    --read-only --cap-drop ALL --security-opt no-new-privileges \
+    -v "$socket:/run/redis" \
+    -v "$work/redis.conf:/etc/redis/redis.conf:ro" \
+    -v "$work/users.acl:/etc/redis/users.acl:ro" \
+    "$redis_image" >/dev/null
+fi
 for i in $(seq 1 60); do [[ -S "$socket/redis.sock" ]] && break; sleep .25; done
 [[ -S "$socket/redis.sock" ]] || { podman logs "$redis"; exit 1; }
 podman run -d --name "$nginx" --network "$net" --network-alias redis-proxy \
@@ -110,6 +152,18 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+if [[ "$redis_quadlet_mode" == 1 ]]; then
+  echo "CHECK: systemd-user Redis Quadlet restart"
+  systemctl --user restart "$redis_quadlet_service"
+  [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
+  for i in $(seq 1 60); do
+    [[ "$(redis_cli PING 2>/dev/null)" == PONG ]] && break
+    sleep .25
+  done
+  [[ "$(redis_cli PING)" == PONG ]] || { echo "Redis did not recover through Nginx" >&2; false; }
+  [[ "$(redis_cli SET logma:after-restart ok)" == OK ]]
+  echo "PASS: systemd-user Redis Quadlet restart and Nginx proxy recovery"
+fi
 mkdir -m 777 "$work/lifecycle-state"
 if [[ "$quadlet_mode" == 1 ]]; then
   mkdir -p "$quadlet_dir"
