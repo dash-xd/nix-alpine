@@ -509,7 +509,12 @@ if [[ "$quadlet_mode" == 1 ]]; then
         done
         [[ "$(redis_cli PING)" == PONG ]]
         # A fresh Redis instance must have no Functions; capture evidence if not.
-        function_listing=$(redis_cli --raw FUNCTION LIST)
+        function_listing=$(bootstrap_cli --raw FUNCTION LIST)
+        [[ "$function_listing" != *"NOPERM"* && "$function_listing" != *"WRONGPASS"* && "$function_listing" != *"NOAUTH"* ]] || {
+          echo "FAIL: elevated bootstrap principal could not inspect fresh Redis Functions" >&2
+          printf '%s\n' "$function_listing" >&2
+          exit 1
+        }
         if [[ -n "$function_listing" ]]; then
           echo "FAIL: Redis Functions present after restart; diagnosing process replacement and bootstrap activation" >&2
           printf 'Redis Function listing:\n%s\n' "$function_listing" >&2
