@@ -28,7 +28,7 @@ api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 # Restrict keyspace; lifecycle runtime's complete command-level ACL remains
 # a separate qualification gate. Do not equate this with production ACL approval.
 bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall\nuser bootstrap on >%s ~* &* +@all\n' "$redis_pass" "$bootstrap_pass" > "$work/users.acl"
+printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall +time\nuser bootstrap on >%s ~* &* +@all\n' "$redis_pass" "$bootstrap_pass" > "$work/users.acl"
 chmod 644 "$work/users.acl"
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
