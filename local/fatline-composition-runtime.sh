@@ -204,6 +204,12 @@ if [[ "$quadlet_mode" == 1 ]]; then
 else
   podman restart "$logma" >/dev/null
 fi
+# Quadlet replaces the container, so an ephemeral published port can change.
+port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
+[[ "$port" =~ ^[0-9]+$ ]] || { echo "Cannot resolve restarted Logma published port" >&2; false; }
+url="http://127.0.0.1:$port/lifecycle/policies"
+lifecycle_url="http://127.0.0.1:$port/lifecycle"
+echo "CHECK: restored Logma HTTP endpoint on port $port"
 for i in $(seq 1 60); do
   status=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H "X-API-Key: $api_pass" "$url" 2>/dev/null || true)
   [[ "$status" == 200 ]] && break
