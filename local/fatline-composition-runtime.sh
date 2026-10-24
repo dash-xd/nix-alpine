@@ -556,8 +556,11 @@ if [[ "$quadlet_mode" == 1 ]]; then
       systemctl --user stop "$bootstrap_unit"
       systemctl --user stop "$nginx_quadlet_service"
       systemctl --user stop "$redis_quadlet_service"
-      [[ "$(systemctl --user is-active "$redis_quadlet_service")" != active ]]
-      [[ "$(systemctl --user is-active "$bootstrap_unit")" != active ]]
+      if [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]] ||
+         [[ "$(systemctl --user is-active "$bootstrap_unit")" == active ]]; then
+        echo "FAIL: Redis or bootstrap remained active after coordinated stop" >&2
+        exit 1
+      fi
       echo "CHECK: starting Logma pulls Redis, Nginx and bootstrap prerequisites"
       systemctl --user start "$quadlet_service"
       for unit in "$redis_quadlet_service" "$nginx_quadlet_service" "$bootstrap_unit" "$quadlet_service"; do
