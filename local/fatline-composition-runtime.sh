@@ -15,6 +15,9 @@ quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
 redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
 nginx_quadlet_mode=${COMPOSITION_NGINX_QUADLET_MODE:-0}
 cold_start_mode=${COMPOSITION_COLD_START_MODE:-0}
+bootstrap_unit_mode=${COMPOSITION_BOOTSTRAP_UNIT_MODE:-0}
+bootstrap_unit="$scope-bootstrap.service"
+bootstrap_unit_file="$HOME/.config/systemd/user/$bootstrap_unit"
 nginx_quadlet_file="$HOME/.config/containers/systemd/$scope-nginx.container"
 nginx_quadlet_service="$scope-nginx.service"
 redis_quadlet_file="$HOME/.config/containers/systemd/$scope-redis.container"
@@ -23,6 +26,11 @@ quadlet_dir="$HOME/.config/containers/systemd"
 quadlet_file="$quadlet_dir/$scope-logma.container"
 quadlet_service="$scope-logma.service"
 cleanup() {
+  if [[ "$bootstrap_unit_mode" == 1 ]]; then
+    systemctl --user stop "$bootstrap_unit" >/dev/null 2>&1 || true
+    rm -f "$bootstrap_unit_file"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
   if [[ "$nginx_quadlet_mode" == 1 ]]; then
     systemctl --user stop "$nginx_quadlet_service" >/dev/null 2>&1 || true
     rm -f "$nginx_quadlet_file"
@@ -208,7 +216,51 @@ if [[ "$cold_start_mode" == 1 ]]; then
   }
   echo "PASS: cold-start Redis reachable, function library absent before bootstrap"
 fi
-bootstrap_functions
+if [[ "$bootstrap_unit_mode" == 1 ]]; then
+  [[ "$cold_start_mode" == 1 ]] || { echo "Bootstrap unit mode requires cold-start mode" >&2; exit 1; }
+  mkdir -p "$HOME/.config/systemd/user"
+  [[ ! -e "$bootstrap_unit_file" ]] || { echo "Refusing existing unit: $bootstrap_unit_file" >&2; exit 1; }
+  # The service executes the same qualification bootstrap function in a
+  # separate shell. Its credentials are ephemeral and never promoted.
+  declare -f bootstrap_cli bootstrap_functions > "$work/bootstrap-functions.sh"
+  cat > "$work/bootstrap-entry.sh" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+redis_image=$(printf '%q' "$redis_image")
+logma_image=$(printf '%q' "$logma_image")
+nginx=$(printf '%q' "$nginx")
+bootstrap=$(printf '%q' "$bootstrap")
+net=$(printf '%q' "$net")
+cli=$(printf '%q' "$cli")
+redis_pass=$(printf '%q' "$redis_pass")
+bootstrap_pass=$(printf '%q' "$bootstrap_pass")
+api_pass=$(printf '%q' "$api_pass")
+EOF
+  cat "$work/bootstrap-functions.sh" >> "$work/bootstrap-entry.sh"
+  printf '\nbootstrap_functions\n' >> "$work/bootstrap-entry.sh"
+  chmod 700 "$work/bootstrap-entry.sh"
+  cat > "$bootstrap_unit_file" <<EOF
+[Unit]
+Description=Disposable Fatline Redis Function bootstrap
+Requires=$nginx_quadlet_service
+After=$nginx_quadlet_service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash $work/bootstrap-entry.sh
+RemainAfterExit=yes
+TimeoutStartSec=90
+EOF
+  chmod 600 "$bootstrap_unit_file"
+  systemctl --user daemon-reload
+  echo "CHECK: systemd-user Redis Function bootstrap oneshot"
+  systemctl --user start "$bootstrap_unit"
+  [[ "$(systemctl --user is-active "$bootstrap_unit")" == active ]]
+  [[ "$(systemctl --user show "$bootstrap_unit" -p Result --value)" == success ]]
+  echo "PASS: systemd-user bootstrap oneshot completed"
+else
+  bootstrap_functions
+fi
 if [[ "$cold_start_mode" == 1 ]]; then
   [[ "$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1)" != *"Function not found"* ]] || {
     echo "Function missing after bootstrap" >&2; exit 1;
@@ -262,7 +314,9 @@ if [[ "$quadlet_mode" == 1 ]]; then
 [Unit]
 Description=Disposable Fatline Logma Quadlet qualification
 EOF
-  if [[ "$nginx_quadlet_mode" == 1 ]]; then
+  if [[ "$bootstrap_unit_mode" == 1 ]]; then
+    printf 'Requires=%s\nAfter=%s\n' "$bootstrap_unit" "$bootstrap_unit" >> "$quadlet_file"
+  elif [[ "$nginx_quadlet_mode" == 1 ]]; then
     printf 'Requires=%s\nAfter=%s\n' "$nginx_quadlet_service" "$nginx_quadlet_service" >> "$quadlet_file"
   fi
   cat >> "$quadlet_file" <<EOF
