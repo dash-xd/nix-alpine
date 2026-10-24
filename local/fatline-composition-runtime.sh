@@ -53,6 +53,10 @@ cleanup() {
 diagnose_failure() {
   local code=$?
   echo "FAIL: Quadlet composition at line $1 (exit $code)" >&2
+  if [[ "${bootstrap_unit_mode}" == 1 ]]; then
+    systemctl --user --no-pager -l status "$bootstrap_unit" >&2 || true
+    journalctl --user -u "$bootstrap_unit" -n 70 --no-pager -l >&2 || true
+  fi
   if [[ "${nginx_quadlet_mode}" == 1 ]]; then
     systemctl --user --no-pager status "$nginx_quadlet_service" >&2 || true
     journalctl --user -u "$nginx_quadlet_service" -n 35 --no-pager >&2 || true
@@ -254,7 +258,12 @@ EOF
   chmod 600 "$bootstrap_unit_file"
   systemctl --user daemon-reload
   echo "CHECK: systemd-user Redis Function bootstrap oneshot"
-  systemctl --user start "$bootstrap_unit"
+  systemctl --user start "$bootstrap_unit" || {
+    echo "Bootstrap oneshot failed; collecting unit status and journal" >&2
+    systemctl --user --no-pager -l status "$bootstrap_unit" >&2 || true
+    journalctl --user -u "$bootstrap_unit" -n 70 --no-pager -l >&2 || true
+    exit 1
+  }
   [[ "$(systemctl --user is-active "$bootstrap_unit")" == active ]]
   [[ "$(systemctl --user show "$bootstrap_unit" -p Result --value)" == success ]]
   echo "PASS: systemd-user bootstrap oneshot completed"
