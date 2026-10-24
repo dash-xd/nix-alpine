@@ -13,12 +13,20 @@ logma="$scope-logma"
 bootstrap="$scope-bootstrap"
 quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
 redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
+nginx_quadlet_mode=${COMPOSITION_NGINX_QUADLET_MODE:-0}
+nginx_quadlet_file="$HOME/.config/containers/systemd/$scope-nginx.container"
+nginx_quadlet_service="$scope-nginx.service"
 redis_quadlet_file="$HOME/.config/containers/systemd/$scope-redis.container"
 redis_quadlet_service="$scope-redis.service"
 quadlet_dir="$HOME/.config/containers/systemd"
 quadlet_file="$quadlet_dir/$scope-logma.container"
 quadlet_service="$scope-logma.service"
 cleanup() {
+  if [[ "$nginx_quadlet_mode" == 1 ]]; then
+    systemctl --user stop "$nginx_quadlet_service" >/dev/null 2>&1 || true
+    rm -f "$nginx_quadlet_file"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
   if [[ "$redis_quadlet_mode" == 1 ]]; then
     systemctl --user stop "$redis_quadlet_service" >/dev/null 2>&1 || true
     rm -f "$redis_quadlet_file"
@@ -36,6 +44,10 @@ cleanup() {
 diagnose_failure() {
   local code=$?
   echo "FAIL: Quadlet composition at line $1 (exit $code)" >&2
+  if [[ "${nginx_quadlet_mode}" == 1 ]]; then
+    systemctl --user --no-pager status "$nginx_quadlet_service" >&2 || true
+    journalctl --user -u "$nginx_quadlet_service" -n 35 --no-pager >&2 || true
+  fi
   if [[ "${redis_quadlet_mode}" == 1 ]]; then
     systemctl --user --no-pager status "$redis_quadlet_service" >&2 || true
     journalctl --user -u "$redis_quadlet_service" -n 35 --no-pager >&2 || true
@@ -102,11 +114,47 @@ else
 fi
 for i in $(seq 1 60); do [[ -S "$socket/redis.sock" ]] && break; sleep .25; done
 [[ -S "$socket/redis.sock" ]] || { podman logs "$redis"; exit 1; }
-podman run -d --name "$nginx" --network "$net" --network-alias redis-proxy \
-  --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --tmpfs /tmp:rw,noexec,nosuid,size=4m,mode=1777 \
-  -v "$socket:/run/redis" -v "$work/nginx.conf:/etc/nginx/nginx.conf:ro" \
-  "$nginx_image" >/dev/null
+if [[ "$nginx_quadlet_mode" == 1 ]]; then
+  mkdir -p "$quadlet_dir"
+  [[ ! -e "$nginx_quadlet_file" ]] || { echo "Refusing existing Quadlet: $nginx_quadlet_file" >&2; exit 1; }
+  cat > "$nginx_quadlet_file" <<EOF
+[Unit]
+Description=Disposable Fatline Nginx Quadlet qualification
+EOF
+  if [[ "$redis_quadlet_mode" == 1 ]]; then
+    printf 'Requires=%s\nAfter=%s\n' "$redis_quadlet_service" "$redis_quadlet_service" >> "$nginx_quadlet_file"
+  fi
+  cat >> "$nginx_quadlet_file" <<EOF
+
+[Container]
+Image=$nginx_image
+ContainerName=$nginx
+Network=$net
+NetworkAlias=redis-proxy
+User=65534:65534
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+Tmpfs=/tmp:rw,noexec,nosuid,size=4m,mode=1777
+Volume=$socket:/run/redis
+Volume=$work/nginx.conf:/etc/nginx/nginx.conf:ro
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=90
+
+EOF
+  chmod 600 "$nginx_quadlet_file"
+  systemctl --user daemon-reload
+  systemctl --user start "$nginx_quadlet_service"
+  [[ "$(systemctl --user is-active "$nginx_quadlet_service")" == active ]]
+else
+  podman run -d --name "$nginx" --network "$net" --network-alias redis-proxy \
+    --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --tmpfs /tmp:rw,noexec,nosuid,size=4m,mode=1777 \
+    -v "$socket:/run/redis" -v "$work/nginx.conf:/etc/nginx/nginx.conf:ro" \
+    "$nginx_image" >/dev/null
+fi
 cli_entry=$(podman image inspect "$redis_image" --format '{{index .Config.Entrypoint 0}}')
 cli="${cli_entry%redis-server}redis-cli"
 redis_cli() {
@@ -155,6 +203,17 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+if [[ "$nginx_quadlet_mode" == 1 ]]; then
+  echo "CHECK: systemd-user Nginx Quadlet restart"
+  systemctl --user restart "$nginx_quadlet_service"
+  [[ "$(systemctl --user is-active "$nginx_quadlet_service")" == active ]]
+  for i in $(seq 1 60); do
+    [[ "$(redis_cli PING 2>/dev/null)" == PONG ]] && break
+    sleep .25
+  done
+  [[ "$(redis_cli PING)" == PONG ]] || { echo "Nginx proxy did not recover" >&2; false; }
+  echo "PASS: systemd-user Nginx Quadlet restart and Unix-socket proxy recovery"
+fi
 if [[ "$redis_quadlet_mode" == 1 ]]; then
   echo "CHECK: systemd-user Redis Quadlet restart"
   systemctl --user restart "$redis_quadlet_service"
@@ -288,7 +347,11 @@ echo "PASS: Logma lifecycle registration restored, ticked and removed after proc
 echo "PASS: Logma unprivileged read-only HTTP auth and restart with immutable image identity"
 if [[ "$quadlet_mode" == 1 ]]; then
   echo "PASS: systemd-user Quadlet Logma startup, restart and lifecycle restoration"
-  echo "Logma Quadlet gate passed; Redis/Nginx Quadlets and production ACL remain unqualified."
+  if [[ "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]]; then
+    echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
+  else
+    echo "Logma Quadlet gate passed; remaining components and production ACL remain unqualified."
+  fi
 else
   echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
 fi
