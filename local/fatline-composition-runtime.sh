@@ -11,7 +11,16 @@ redis="$scope-redis"
 nginx="$scope-nginx"
 logma="$scope-logma"
 bootstrap="$scope-bootstrap"
+quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
+quadlet_dir="$HOME/.config/containers/systemd"
+quadlet_file="$quadlet_dir/$scope-logma.container"
+quadlet_service="$scope-logma.service"
 cleanup() {
+  if [[ "$quadlet_mode" == 1 ]]; then
+    systemctl --user stop "$quadlet_service" >/dev/null 2>&1 || true
+    rm -f "$quadlet_file"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
   podman rm -f "$bootstrap" "$logma" "$nginx" "$redis" >/dev/null 2>&1 || true
   podman network rm "$net" >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -91,12 +100,45 @@ done
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
 mkdir -m 777 "$work/lifecycle-state"
-podman run -d --name "$logma" --network "$net" \
-  --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
-  -v "$work/lifecycle-state:/var/lib/logma/lifecycle" \
-  -e LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle \
-  -e REDIS_USERNAME=logma -e REDISCLI_AUTH="$redis_pass" -e API_KEY="$api_pass" \
-  -p 127.0.0.1::8080 "$logma_image" >/dev/null
+if [[ "$quadlet_mode" == 1 ]]; then
+  mkdir -p "$quadlet_dir"
+  [[ ! -e "$quadlet_file" ]] || { echo "Refusing existing Quadlet: $quadlet_file" >&2; exit 1; }
+  cat > "$quadlet_file" <<EOF
+[Unit]
+Description=Disposable Fatline Logma Quadlet qualification
+
+[Container]
+Image=$logma_image
+ContainerName=$logma
+Network=$net
+User=65534:65534
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+Volume=$work/lifecycle-state:/var/lib/logma/lifecycle
+Environment=LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle
+Environment=REDIS_USERNAME=logma
+Environment=REDISCLI_AUTH=$redis_pass
+Environment=API_KEY=$api_pass
+PublishPort=127.0.0.1::8080
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=90
+
+EOF
+  chmod 600 "$quadlet_file"
+  systemctl --user daemon-reload
+  systemctl --user start "$quadlet_service" || { systemctl --user --no-pager status "$quadlet_service" >&2 || true; exit 1; }
+  [[ "$(systemctl --user is-active "$quadlet_service")" == active ]]
+else
+  podman run -d --name "$logma" --network "$net" \
+    --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
+    -v "$work/lifecycle-state:/var/lib/logma/lifecycle" \
+    -e LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle \
+    -e REDIS_USERNAME=logma -e REDISCLI_AUTH="$redis_pass" -e API_KEY="$api_pass" \
+    -p 127.0.0.1::8080 "$logma_image" >/dev/null
+fi
 port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
 [[ "$port" =~ ^[0-9]+$ ]] || { echo "Cannot resolve published Logma port" >&2; exit 1; }
 url="http://127.0.0.1:$port/lifecycle/policies"
@@ -142,7 +184,12 @@ restore_status=$(curl -sS --max-time 10 -o "$work/restore-register.json" -w '%{h
 grep -Fq '"armed":true' "$work/restore-register.json" || { echo "Restore fixture was not armed" >&2; exit 1; }
 logma_id=$(podman image inspect "$logma_image" --format '{{.Id}}')
 [[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
-podman restart "$logma" >/dev/null
+if [[ "$quadlet_mode" == 1 ]]; then
+  systemctl --user restart "$quadlet_service"
+  [[ "$(systemctl --user is-active "$quadlet_service")" == active ]]
+else
+  podman restart "$logma" >/dev/null
+fi
 for i in $(seq 1 60); do
   status=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H "X-API-Key: $api_pass" "$url" 2>/dev/null || true)
   [[ "$status" == 200 ]] && break
@@ -158,4 +205,9 @@ post_restart_remove=$(curl -sS --max-time 10 -o "$work/post-restart-remove.json"
 [[ "$post_restart_remove" == 200 ]] || { echo "Restored lifecycle remove failed: HTTP $post_restart_remove" >&2; cat "$work/post-restart-remove.json" >&2; exit 1; }
 echo "PASS: Logma lifecycle registration restored, ticked and removed after process restart"
 echo "PASS: Logma unprivileged read-only HTTP auth and restart with immutable image identity"
-echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
+if [[ "$quadlet_mode" == 1 ]]; then
+  echo "PASS: systemd-user Quadlet Logma startup, restart and lifecycle restoration"
+  echo "Logma Quadlet gate passed; Redis/Nginx Quadlets and production ACL remain unqualified."
+else
+  echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
+fi
