@@ -90,9 +90,10 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+mkdir -m 777 "$work/lifecycle-state"
 podman run -d --name "$logma" --network "$net" \
   --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --mount type=tmpfs,destination=/var/lib/logma/lifecycle,tmpfs-size=4194304,tmpfs-mode=1777 \
+  -v "$work/lifecycle-state:/var/lib/logma/lifecycle" \
   -e LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle \
   -e REDIS_USERNAME=logma -e REDISCLI_AUTH="$redis_pass" -e API_KEY="$api_pass" \
   -p 127.0.0.1::8080 "$logma_image" >/dev/null
