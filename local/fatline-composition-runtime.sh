@@ -76,6 +76,28 @@ done
 [[ "$status" == 200 ]] || { podman logs "$logma"; echo "Authenticated lifecycle policies HTTP $status" >&2; exit 1; }
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$url")" == 401 ]]
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-API-Key: incorrect' "$url")" == 401 ]]
+# Exercise actual lifecycle arming, ticking, and removal through Logma's Redis client.
+# This is deliberately fail-closed: the provisional ACL may need refinement.
+lifecycle_url="http://127.0.0.1:$port/lifecycle"
+deployment="qualification-$"
+payload=$(printf '{"deployment_id":"%s","policy_name":"sandbox-30d","shutdown_channel":"logma:qualification:shutdown"}' "$deployment")
+register_status=$(curl -sS --max-time 10 -o "$work/register.json" -w '%{http_code}' \
+  -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
+  --data "$payload" "$lifecycle_url/")
+if [[ "$register_status" != 201 ]]; then
+  echo "Lifecycle registration failed: HTTP $register_status" >&2
+  cat "$work/register.json" >&2
+  podman logs --tail 40 "$logma" >&2
+  exit 1
+fi
+grep -Fq '"armed":true' "$work/register.json" || { echo "Lifecycle registration was not armed" >&2; cat "$work/register.json" >&2; exit 1; }
+tick_status=$(curl -sS --max-time 10 -o "$work/tick.json" -w '%{http_code}' \
+  -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick")
+[[ "$tick_status" == 200 ]] || { echo "Lifecycle tick failed: HTTP $tick_status" >&2; cat "$work/tick.json" >&2; exit 1; }
+remove_status=$(curl -sS --max-time 10 -o "$work/remove.json" -w '%{http_code}' \
+  -X DELETE -H "X-API-Key: $api_pass" "$lifecycle_url/$deployment")
+[[ "$remove_status" == 200 ]] || { echo "Lifecycle remove failed: HTTP $remove_status" >&2; cat "$work/remove.json" >&2; exit 1; }
+echo "PASS: Logma lifecycle register/arm, tick and remove via Redis"
 logma_id=$(podman image inspect "$logma_image" --format '{{.Id}}')
 [[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
 podman restart "$logma" >/dev/null
