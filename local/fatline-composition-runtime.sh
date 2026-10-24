@@ -131,6 +131,14 @@ remove_status=$(curl -sS --max-time 10 -o "$work/remove.json" -w '%{http_code}' 
   -X DELETE -H "X-API-Key: $api_pass" "$lifecycle_url/$deployment")
 [[ "$remove_status" == 200 ]] || { echo "Lifecycle remove failed: HTTP $remove_status" >&2; cat "$work/remove.json" >&2; exit 1; }
 echo "PASS: Logma lifecycle register/arm, tick and remove via Redis"
+# Leave a durable registration in the mounted state directory across restart.
+restore_deployment="restore-$"
+restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
+restore_status=$(curl -sS --max-time 10 -o "$work/restore-register.json" -w '%{http_code}' \
+  -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
+  --data "$restore_payload" "$lifecycle_url/")
+[[ "$restore_status" == 201 ]] || { echo "Restore fixture registration failed: HTTP $restore_status" >&2; cat "$work/restore-register.json" >&2; exit 1; }
+grep -Fq '"armed":true' "$work/restore-register.json" || { echo "Restore fixture was not armed" >&2; exit 1; }
 logma_id=$(podman image inspect "$logma_image" --format '{{.Id}}')
 [[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
 podman restart "$logma" >/dev/null
@@ -141,5 +149,12 @@ for i in $(seq 1 60); do
 done
 [[ "$status" == 200 ]]
 [[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
+curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/restore-list.json"
+grep -Fq "\"deployment_id\":\"$restore_deployment\"" "$work/restore-list.json" || { echo "Lifecycle registration missing after restart" >&2; cat "$work/restore-list.json" >&2; exit 1; }
+post_restart_tick=$(curl -sS --max-time 10 -o "$work/post-restart-tick.json" -w '%{http_code}' -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick")
+[[ "$post_restart_tick" == 200 ]] || { echo "Restored lifecycle tick failed: HTTP $post_restart_tick" >&2; cat "$work/post-restart-tick.json" >&2; exit 1; }
+post_restart_remove=$(curl -sS --max-time 10 -o "$work/post-restart-remove.json" -w '%{http_code}' -X DELETE -H "X-API-Key: $api_pass" "$lifecycle_url/$restore_deployment")
+[[ "$post_restart_remove" == 200 ]] || { echo "Restored lifecycle remove failed: HTTP $post_restart_remove" >&2; cat "$work/post-restart-remove.json" >&2; exit 1; }
+echo "PASS: Logma lifecycle registration restored, ticked and removed after process restart"
 echo "PASS: Logma unprivileged read-only HTTP auth and restart with immutable image identity"
 echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
