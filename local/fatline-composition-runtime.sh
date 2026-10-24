@@ -285,14 +285,31 @@ api_pass=$(printf '%q' "$api_pass")
 EOF
     cat "$work/bootstrap-functions.sh" >> "$work/reconcile-entry.sh"
     cat >> "$work/reconcile-entry.sh" <<'EOF'
-# Logma's scoped principal can probe a Function without privileged LIST access.
-probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1 || true)
-if [[ "$probe" != *"Function not found"* && "$probe" != *"unknown command"* ]]; then
-  [[ "$probe" != *"Connection refused"* && "$probe" != *"Could not connect"* ]] || exit 1
-  exit 0
+# The privileged principal is available only on a freshly started Redis.
+# Inspect the exact library instead of treating arbitrary FCALL errors as readiness.
+listing=$(bootstrap_cli --raw FUNCTION LIST 2>&1) || {
+  if [[ "$listing" == *WRONGPASS* || "$listing" == *NOAUTH* ]]; then
+    # Bootstrap already revoked: verify the application principal can call
+    # the known Function; an argument error means the Function was resolved.
+    probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1) && exit 0
+    [[ "$probe" == *"wrong number of arguments"* ]] && exit 0
+    echo "FAIL: bootstrap revoked but Function is not callable: $probe" >&2
+    exit 1
+  fi
+  echo "FAIL: cannot inspect Redis Functions: $listing" >&2
+  exit 1
+}
+if [[ "$listing" == *dashxd_ratelimit* ]]; then
+  [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]]
+  echo "PASS: existing Functions verified and bootstrap principal revoked"
+else
+  echo "CHECK: missing Redis Functions; running elevated bootstrap"
+  bootstrap_functions
+  echo "PASS: Redis Functions restored and bootstrap principal revoked"
 fi
-# On a fresh RAM-only Redis, the ACL file restores the bootstrap principal.
-bootstrap_functions
+[[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || {
+  echo "FAIL: bootstrap principal still authenticates" >&2; exit 1;
+}
 EOF
     chmod 700 "$work/reconcile-entry.sh"
     cat > "$HOME/.config/systemd/user/$scope-reconcile.service" <<EOF
@@ -599,7 +616,13 @@ if [[ "$quadlet_mode" == 1 ]]; then
             fi
             sleep .5
           done
-          [[ "$reconciled" == true ]] || { echo "FAIL: Function reconciliation timed out" >&2; exit 1; }
+          if [[ "$reconciled" != true ]]; then
+            echo "FAIL: Function reconciliation timed out" >&2
+            systemctl --user --no-pager -l status "$scope-reconcile.timer" "$scope-reconcile.service" >&2 || true
+            systemctl --user show "$scope-reconcile.timer" -p ActiveState -p Result -p LastTriggerUSec -p NextElapseUSecRealtime >&2 || true
+            journalctl --user -u "$scope-reconcile.service" -n 100 --no-pager -l >&2 || true
+            exit 1
+          fi
           [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
             { echo "FAIL: Logma replaced during Function reconciliation" >&2; exit 1; }
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
