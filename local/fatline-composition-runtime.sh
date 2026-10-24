@@ -626,6 +626,39 @@ if [[ "$quadlet_mode" == 1 ]]; then
           fi
           [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
             { echo "FAIL: Logma replaced during Function reconciliation" >&2; exit 1; }
+          if [[ "${COMPOSITION_LIFECYCLE_CRASH_MODE:-0}" == 1 ]]; then
+            echo "CHECK: Logma lifecycle operations after Redis crash and Function restoration"
+            [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
+              { echo "FAIL: Logma identity changed before lifecycle recovery" >&2; exit 1; }
+            # A pre-crash registration cannot be presumed present in RAM-only Redis.
+            # Exercise the existing durable fixture through the HTTP API first.
+            recovered_list_status=$(curl -sS --max-time 10 -o "$work/crash-list.json" -w '%{http_code}' \
+              -H "X-API-Key: $api_pass" "$lifecycle_url/" || true)
+            [[ "$recovered_list_status" == 200 ]] ||
+              { echo "FAIL: lifecycle listing after Redis crash returned HTTP $recovered_list_status" >&2; cat "$work/crash-list.json" >&2 || true; exit 1; }
+            if ! grep -Fq "\"deployment_id\":\"$restore_deployment\"" "$work/crash-list.json"; then
+              echo "FAIL: durable lifecycle fixture missing after Redis crash; state replay is not qualified" >&2
+              cat "$work/crash-list.json" >&2
+              exit 1
+            fi
+            recovered_tick_status=$(curl -sS --max-time 10 -o "$work/crash-tick.json" -w '%{http_code}' \
+              -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick" || true)
+            [[ "$recovered_tick_status" == 200 ]] ||
+              { echo "FAIL: lifecycle tick after Redis crash returned HTTP $recovered_tick_status" >&2; cat "$work/crash-tick.json" >&2 || true; exit 1; }
+            recovered_deployment="crash-recovered-$"
+            recovered_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$recovered_deployment" "$policy_code")
+            recovered_register_status=$(curl -sS --max-time 10 -o "$work/crash-register.json" -w '%{http_code}' \
+              -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
+              --data "$recovered_payload" "$lifecycle_url/" || true)
+            [[ "$recovered_register_status" == 201 ]] ||
+              { echo "FAIL: lifecycle registration after Redis crash returned HTTP $recovered_register_status" >&2; cat "$work/crash-register.json" >&2 || true; exit 1; }
+            grep -Fq '"armed":true' "$work/crash-register.json" ||
+              { echo "FAIL: post-crash lifecycle registration was not armed" >&2; exit 1; }
+            [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
+              { echo "FAIL: Logma restarted during lifecycle recovery" >&2; exit 1; }
+            echo "PASS: Logma lifecycle listing, tick, and registration recovered without Logma restart"
+            echo "Crash-window fail-closed behavior remains a separate qualification gate."
+          fi
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
           echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
         else
