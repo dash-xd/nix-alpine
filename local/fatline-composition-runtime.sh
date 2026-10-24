@@ -10,8 +10,9 @@ socket="$work/socket"
 redis="$scope-redis"
 nginx="$scope-nginx"
 logma="$scope-logma"
+bootstrap="$scope-bootstrap"
 cleanup() {
-  podman rm -f "$logma" "$nginx" "$redis" >/dev/null 2>&1 || true
+  podman rm -f "$bootstrap" "$logma" "$nginx" "$redis" >/dev/null 2>&1 || true
   podman network rm "$net" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -26,7 +27,8 @@ redis_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 # Restrict keyspace; lifecycle runtime's complete command-level ACL remains
 # a separate qualification gate. Do not equate this with production ACL approval.
-printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall\n' "$redis_pass" > "$work/users.acl"
+bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \\n')
+printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall\nuser bootstrap on >%s ~* &* +@all\n' "$redis_pass" "$bootstrap_pass" > "$work/users.acl"
 chmod 644 "$work/users.acl"
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
@@ -49,6 +51,35 @@ redis_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
     "$redis_image" -h 127.0.0.1 -p 6379 --user logma -a "$redis_pass" --no-auth-warning "$@"
 }
+bootstrap_cli() {
+  podman run --rm --network "container:$nginx" --entrypoint "$cli" \
+    "$redis_image" -h 127.0.0.1 -p 6379 --user bootstrap -a "$bootstrap_pass" --no-auth-warning "$@"
+}
+# Bootstrap the ratelimiter library with a disposable elevated identity.
+podman run -d --name "$bootstrap" --network "$net" \
+  --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --mount type=tmpfs,destination=/var/lib/logma/lifecycle,tmpfs-size=4194304,tmpfs-mode=1777 \
+  -e LOGMA_RATELIMITER_BOOTSTRAP=internal \
+  -e REDIS_USERNAME=bootstrap -e REDISCLI_AUTH="$bootstrap_pass" \
+  -e API_KEY="$api_pass" "$logma_image" >/dev/null
+function_ready=false
+for i in $(seq 1 60); do
+  if bootstrap_cli FUNCTION LIST 2>/dev/null | grep -Fq 'dashxd_ratelimit'; then
+    function_ready=true
+    break
+  fi
+  if [[ "$(podman inspect "$bootstrap" --format '{{.State.Running}}')" != true ]]; then break; fi
+  sleep .25
+done
+if [[ "$function_ready" != true ]]; then
+  echo "Logma ratelimiter function bootstrap failed" >&2
+  podman logs "$bootstrap" >&2
+  exit 1
+fi
+podman rm -f "$bootstrap" >/dev/null
+[[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]] || { echo "Failed to revoke bootstrap identity" >&2; exit 1; }
+[[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "Bootstrap identity still authenticates" >&2; exit 1; }
+echo "PASS: ratelimiter functions installed; bootstrap identity revoked"
 for i in $(seq 1 60); do
   if [[ "$(redis_cli PING 2>/dev/null)" == PONG ]]; then break; fi
   sleep .25
@@ -111,4 +142,4 @@ done
 [[ "$status" == 200 ]]
 [[ "$(podman inspect "$logma" --format '{{.Image}}')" == "$logma_id" ]]
 echo "PASS: Logma unprivileged read-only HTTP auth and restart with immutable image identity"
-echo "Fatline runtime connectivity gate passed; lifecycle Redis command coverage and systemd-user Quadlet restart remain unqualified."
+echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
