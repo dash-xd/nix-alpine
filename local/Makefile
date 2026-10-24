@@ -36,6 +36,8 @@ BRANCH ?= main
 FATLINE_REPO ?= dash-xd/agni
 FATLINE_BRANCH ?= codex/redis-isolated-qualification-artifact
 COMPOSITION_AGNI_BRANCH ?= codex/fatline-composition-qualification-config
+COMPOSITION_AGNI_CHECKOUT ?= agni-qualification
+SYNC_NAME ?=
 FATLINE_AGNI ?= $(WORKSPACES)/agni
 QUALIFY_COMPONENT ?= $(COMPONENT)
 QUALIFY_IMAGE ?= $(if $(filter nginx,$(QUALIFY_COMPONENT)),localhost/fatline-nginx:candidate,localhost/fatline-redis:candidate)
@@ -107,7 +109,7 @@ image-prune:
 	@bash ./images.sh prune "$(CONTAINER)" "$(IMAGE)"
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
-	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)"
+	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)"
 # Refresh a component without rebuilding images or modifying release records.
 sync-component:
 	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
@@ -177,14 +179,14 @@ qualify-service:
 
 # Smoke-style disposable runtime gate; Nix owns the configuration artifact.
 qualify-composition:
-	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
-	@bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
+	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
+	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Preflight only: Nix-Alpine builds the Agni composition, host verifies its
 # topology and local image identities. No containers or release tags changed.
 qualify-composition-preflight:
-	@bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
