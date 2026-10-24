@@ -26,6 +26,11 @@ quadlet_dir="$HOME/.config/containers/systemd"
 quadlet_file="$quadlet_dir/$scope-logma.container"
 quadlet_service="$scope-logma.service"
 cleanup() {
+  if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
+    systemctl --user stop "$scope-reconcile.timer" "$scope-reconcile.service" >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/$scope-reconcile.timer" "$HOME/.config/systemd/user/$scope-reconcile.service"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
   if [[ "$bootstrap_unit_mode" == 1 ]]; then
     systemctl --user stop "$bootstrap_unit" >/dev/null 2>&1 || true
     rm -f "$bootstrap_unit_file"
@@ -264,6 +269,58 @@ TimeoutStartSec=90
 EOF
   chmod 600 "$bootstrap_unit_file"
   systemctl --user daemon-reload
+  if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
+    cat > "$work/reconcile-entry.sh" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+redis_image=$(printf '%q' "$redis_image")
+logma_image=$(printf '%q' "$logma_image")
+nginx=$(printf '%q' "$nginx")
+bootstrap=$(printf '%q' "$bootstrap")
+net=$(printf '%q' "$net")
+cli=$(printf '%q' "$cli")
+redis_pass=$(printf '%q' "$redis_pass")
+bootstrap_pass=$(printf '%q' "$bootstrap_pass")
+api_pass=$(printf '%q' "$api_pass")
+EOF
+    cat "$work/bootstrap-functions.sh" >> "$work/reconcile-entry.sh"
+    cat >> "$work/reconcile-entry.sh" <<'EOF'
+# Logma's scoped principal can probe a Function without privileged LIST access.
+probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1 || true)
+if [[ "$probe" != *"Function not found"* && "$probe" != *"unknown command"* ]]; then
+  [[ "$probe" != *"Connection refused"* && "$probe" != *"Could not connect"* ]] || exit 1
+  exit 0
+fi
+# On a fresh RAM-only Redis, the ACL file restores the bootstrap principal.
+bootstrap_functions
+EOF
+    chmod 700 "$work/reconcile-entry.sh"
+    cat > "$HOME/.config/systemd/user/$scope-reconcile.service" <<EOF
+[Unit]
+Description=Disposable Fatline Redis Function reconciliation
+Wants=$nginx_quadlet_service
+After=$nginx_quadlet_service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash $work/reconcile-entry.sh
+TimeoutStartSec=90
+EOF
+    cat > "$HOME/.config/systemd/user/$scope-reconcile.timer" <<EOF
+[Unit]
+Description=Disposable Fatline Redis Function reconciliation schedule
+
+[Timer]
+OnActiveSec=2s
+OnUnitInactiveSec=2s
+Unit=$scope-reconcile.service
+
+[Install]
+WantedBy=timers.target
+EOF
+    chmod 600 "$HOME/.config/systemd/user/$scope-reconcile.service" "$HOME/.config/systemd/user/$scope-reconcile.timer"
+    systemctl --user daemon-reload
+  fi
   echo "CHECK: systemd-user Redis Function bootstrap oneshot"
   systemctl --user start "$bootstrap_unit" || {
     echo "Bootstrap oneshot failed; collecting unit status and journal" >&2
@@ -508,6 +565,9 @@ if [[ "$quadlet_mode" == 1 ]]; then
         echo "CHECK: unexpected Redis crash with Logma remaining active"
         old_redis_id=$(podman inspect "$redis" --format '{{.Id}}')
         old_logma_id=$(podman inspect "$logma" --format '{{.Id}}')
+        if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
+          systemctl --user start "$scope-reconcile.timer"
+        fi
         podman kill --signal KILL "$redis" >/dev/null
         restarted=false
         for i in $(seq 1 120); do
@@ -527,7 +587,26 @@ if [[ "$quadlet_mode" == 1 ]]; then
         [[ -z "$function_listing" ]] ||
           { printf 'FAIL: expected empty Redis Function library after crash, got: %s\n' "$function_listing" >&2; exit 1; }
         echo "PASS: systemd restarted Redis after SIGKILL; Logma container remained unchanged; RAM-only Functions absent"
-        echo "Crash baseline passed; automatic Function reconciliation and Logma readiness remain unqualified."
+        if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
+          echo "CHECK: timer-driven Redis Function reconciliation without Logma replacement"
+          reconciled=false
+          for i in $(seq 1 120); do
+            probe=$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1 || true)
+            if [[ "$probe" != *"Function not found"* && "$probe" != *"unknown command"* ]] &&
+               [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]]; then
+              reconciled=true
+              break
+            fi
+            sleep .5
+          done
+          [[ "$reconciled" == true ]] || { echo "FAIL: Function reconciliation timed out" >&2; exit 1; }
+          [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
+            { echo "FAIL: Logma replaced during Function reconciliation" >&2; exit 1; }
+          echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
+          echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
+        else
+          echo "Crash baseline passed; automatic Function reconciliation and Logma readiness remain unqualified."
+        fi
       fi
       if [[ "${COMPOSITION_LIVE_REDIS_RECOVERY_MODE:-0}" == 1 ]]; then
         echo "CHECK: coordinated recovery after Redis restart with Logma previously active"
