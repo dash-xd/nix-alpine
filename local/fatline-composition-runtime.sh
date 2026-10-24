@@ -447,9 +447,23 @@ if [[ "$quadlet_mode" == 1 ]]; then
     echo "CHECK: generated systemd dependency edges"
     systemctl --user show "$quadlet_service" -p Requires -p After > "$work/logma-dependencies"
     systemctl --user show "$nginx_quadlet_service" -p Requires -p After > "$work/nginx-dependencies"
-    grep -Fq "$nginx_quadlet_service" "$work/logma-dependencies"
     grep -Fq "$redis_quadlet_service" "$work/nginx-dependencies"
-    echo "PASS: generated systemd dependency edges Logma -> Nginx -> Redis"
+    if [[ "$bootstrap_unit_mode" == 1 ]]; then
+      systemctl --user show "$bootstrap_unit" -p Requires -p After > "$work/bootstrap-dependencies"
+      for edge in "$bootstrap_unit:$work/logma-dependencies" "$nginx_quadlet_service:$work/bootstrap-dependencies"; do
+        expected=${edge%%:*}
+        dependency_file=${edge#*:}
+        grep -Fq "$expected" "$dependency_file" || {
+          echo "Missing required systemd dependency $expected in $dependency_file" >&2
+          cat "$dependency_file" >&2
+          exit 1
+        }
+      done
+      echo "PASS: generated systemd dependency edges Logma -> Bootstrap -> Nginx -> Redis"
+    else
+      grep -Fq "$nginx_quadlet_service" "$work/logma-dependencies"
+      echo "PASS: generated systemd dependency edges Logma -> Nginx -> Redis"
+    fi
   fi
   if [[ "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]]; then
     if [[ "$bootstrap_unit_mode" == 1 ]]; then
