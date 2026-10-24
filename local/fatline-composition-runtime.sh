@@ -237,6 +237,11 @@ if [[ "$quadlet_mode" == 1 ]]; then
   cat > "$quadlet_file" <<EOF
 [Unit]
 Description=Disposable Fatline Logma Quadlet qualification
+EOF
+  if [[ "$nginx_quadlet_mode" == 1 ]]; then
+    printf 'Requires=%s\nAfter=%s\n' "$nginx_quadlet_service" "$nginx_quadlet_service" >> "$quadlet_file"
+  fi
+  cat >> "$quadlet_file" <<EOF
 
 [Container]
 Image=$logma_image
@@ -347,6 +352,14 @@ echo "PASS: Logma lifecycle registration restored, ticked and removed after proc
 echo "PASS: Logma unprivileged read-only HTTP auth and restart with immutable image identity"
 if [[ "$quadlet_mode" == 1 ]]; then
   echo "PASS: systemd-user Quadlet Logma startup, restart and lifecycle restoration"
+  if [[ "$nginx_quadlet_mode" == 1 && "$redis_quadlet_mode" == 1 ]]; then
+    echo "CHECK: generated systemd dependency edges"
+    systemctl --user show "$quadlet_service" -p Requires -p After > "$work/logma-dependencies"
+    systemctl --user show "$nginx_quadlet_service" -p Requires -p After > "$work/nginx-dependencies"
+    grep -Fq "$nginx_quadlet_service" "$work/logma-dependencies"
+    grep -Fq "$redis_quadlet_service" "$work/nginx-dependencies"
+    echo "PASS: generated systemd dependency edges Logma -> Nginx -> Redis"
+  fi
   if [[ "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]]; then
     echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
   else
