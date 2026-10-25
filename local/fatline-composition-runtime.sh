@@ -745,7 +745,20 @@ PY
               fi
               sleep 1
             done
-            [[ "$recovered_timer" == true ]] || { echo "FAIL: lifecycle timer score not restored to original absolute deadline ($expected_deadline_ms)" >&2; exit 1; }
+            if [[ "$recovered_timer" != true ]]; then
+              echo "FAIL: lifecycle timer score not restored to original absolute deadline ($expected_deadline_ms)" >&2
+              echo "DIAG: observed ZSCORE=${recovered_score:-<empty>} key=$timer_key" >&2
+              echo "DIAG: timer key TYPE and ZRANGE" >&2
+              redis_cli TYPE "$timer_key" >&2 || true
+              redis_cli ZRANGE "$timer_key" 0 -1 WITHSCORES >&2 || true
+              echo "DIAG: lifecycle Redis keys" >&2
+              redis_cli --scan --pattern 'logma:lifecycle:*' >&2 || true
+              echo "DIAG: Logma reconciliation logs" >&2
+              podman logs --tail 160 "$logma" >&2 || true
+              echo "DIAG: durable registrations from Logma HTTP" >&2
+              curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" >&2 || true
+              exit 1
+            fi
             # Existing registrations must retain their original absolute deadline.
             curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/timer-list-after.json"
             python3 - "$work/timer-list-after.json" "$work/timer-deadline.txt" "$restore_deployment" <<'PY'
