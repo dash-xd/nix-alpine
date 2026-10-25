@@ -600,6 +600,23 @@ if [[ "$quadlet_mode" == 1 ]]; then
           curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/pre-crash-list.json"
           grep -Fq "\"deployment_id\":\"$restore_deployment\"" "$work/pre-crash-list.json" ||
             { echo "FAIL: crash fixture not listed before crash" >&2; exit 1; }
+          if [[ "${COMPOSITION_TIMER_STATE_MODE:-0}" == 1 ]]; then
+            echo "CHECK: pre-crash lifecycle timer state and durable deadline"
+            python3 - "$work/crash-fixture-register.json" "$work/timer-deadline.txt" <<'PY'
+import json, sys
+from datetime import datetime
+obj = json.load(open(sys.argv[1]))
+reg = obj.get("registration", obj)
+deadline = reg.get("deadline")
+if not isinstance(deadline, str) or not deadline:
+    raise SystemExit("FAIL: registration response lacks durable deadline")
+datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+open(sys.argv[2], "w").write(deadline)
+PY
+            redis_cli --scan --pattern 'logma:lifecycle:*' | sort > "$work/timer-keys-before"
+            [[ -s "$work/timer-keys-before" ]] || { echo "FAIL: no Redis lifecycle timer keys before crash" >&2; exit 1; }
+            echo "PASS: durable deadline captured and Redis lifecycle keys present before crash"
+          fi
           echo "PASS: durable crash fixture registered and visible before Redis SIGKILL"
         fi
         echo "CHECK: unexpected Redis crash with Logma remaining active"
@@ -705,6 +722,30 @@ if [[ "$quadlet_mode" == 1 ]]; then
               { echo "FAIL: Logma restarted during lifecycle recovery" >&2; exit 1; }
             echo "PASS: Logma lifecycle listing, tick, and registration recovered without Logma restart"
             echo "Crash-window fail-closed behavior remains a separate qualification gate."
+          fi
+          if [[ "${COMPOSITION_TIMER_STATE_MODE:-0}" == 1 ]]; then
+            echo "CHECK: Redis timer keys reconstructed after RAM-only restart"
+            recovered_timer=false
+            for attempt in $(seq 1 30); do
+              redis_cli --scan --pattern 'logma:lifecycle:*' | sort > "$work/timer-keys-after"
+              if [[ -s "$work/timer-keys-after" ]]; then
+                recovered_timer=true
+                break
+              fi
+              sleep 1
+            done
+            [[ "$recovered_timer" == true ]] || { echo "FAIL: lifecycle timer state absent after Redis recovery" >&2; exit 1; }
+            # Existing registrations must retain their original absolute deadline.
+            curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/timer-list-after.json"
+            python3 - "$work/timer-list-after.json" "$work/timer-deadline.txt" "$restore_deployment" <<'PY'
+import json, sys
+obj = json.load(open(sys.argv[1]))
+regs = obj if isinstance(obj, list) else obj.get("registrations", [])
+matches = [r for r in regs if r.get("deployment_id") == sys.argv[3]]
+if len(matches) != 1 or matches[0].get("deadline") != open(sys.argv[2]).read():
+    raise SystemExit("FAIL: durable lifecycle deadline changed after Redis crash")
+PY
+            echo "PASS: Redis lifecycle keys recovered; durable absolute deadline unchanged"
           fi
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
           echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
