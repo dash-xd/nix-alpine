@@ -613,8 +613,19 @@ if not isinstance(deadline, str) or not deadline:
 datetime.fromisoformat(deadline.replace("Z", "+00:00"))
 open(sys.argv[2], "w").write(deadline)
 PY
-            redis_cli --scan --pattern 'logma:lifecycle:*' | sort > "$work/timer-keys-before"
-            [[ -s "$work/timer-keys-before" ]] || { echo "FAIL: no Redis lifecycle timer keys before crash" >&2; exit 1; }
+            timer_key="logma:lifecycle:{deployment:$restore_deployment}:lifecycle:timers"
+            expected_deadline_ms=$(python3 - "$work/timer-deadline.txt" <<'PY'
+from datetime import datetime
+import sys
+value = open(sys.argv[1]).read()
+print(int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000))
+PY
+)
+            before_score=$(redis_cli ZSCORE "$timer_key" shutdown:timer)
+            [[ "$before_score" == "$expected_deadline_ms" ]] || {
+              echo "FAIL: pre-crash timer score $before_score differs from durable deadline $expected_deadline_ms" >&2
+              exit 1
+            }
             echo "PASS: durable deadline captured and Redis lifecycle keys present before crash"
           fi
           echo "PASS: durable crash fixture registered and visible before Redis SIGKILL"
@@ -727,14 +738,14 @@ PY
             echo "CHECK: Redis timer keys reconstructed after RAM-only restart"
             recovered_timer=false
             for attempt in $(seq 1 30); do
-              redis_cli --scan --pattern 'logma:lifecycle:*' | sort > "$work/timer-keys-after"
-              if [[ -s "$work/timer-keys-after" ]]; then
+              recovered_score=$(redis_cli ZSCORE "$timer_key" shutdown:timer 2>/dev/null || true)
+              if [[ "$recovered_score" == "$expected_deadline_ms" ]]; then
                 recovered_timer=true
                 break
               fi
               sleep 1
             done
-            [[ "$recovered_timer" == true ]] || { echo "FAIL: lifecycle timer state absent after Redis recovery" >&2; exit 1; }
+            [[ "$recovered_timer" == true ]] || { echo "FAIL: lifecycle timer score not restored to original absolute deadline ($expected_deadline_ms)" >&2; exit 1; }
             # Existing registrations must retain their original absolute deadline.
             curl -fsS --max-time 10 -H "X-API-Key: $api_pass" "$lifecycle_url/" > "$work/timer-list-after.json"
             python3 - "$work/timer-list-after.json" "$work/timer-deadline.txt" "$restore_deployment" <<'PY'
@@ -745,7 +756,7 @@ matches = [r for r in regs if r.get("deployment_id") == sys.argv[3]]
 if len(matches) != 1 or matches[0].get("deadline") != open(sys.argv[2]).read():
     raise SystemExit("FAIL: durable lifecycle deadline changed after Redis crash")
 PY
-            echo "PASS: Redis lifecycle keys recovered; durable absolute deadline unchanged"
+            echo "PASS: Redis timer ZSCORE restored to original deadline; durable absolute deadline unchanged"
           fi
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
           echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
