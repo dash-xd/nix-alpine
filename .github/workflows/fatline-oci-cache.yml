@@ -68,8 +68,8 @@ jobs:
           nginx_archive=$(cat "$RUNNER_TEMP/nginx-out")
           test -s "$nginx_archive"
           podman load -i "$nginx_archive"
-          redis_id=$(podman images --format '{{.ID}}' localhost/fatline-redis:candidate | head -1)
-          nginx_id=$(podman images --format '{{.ID}}' localhost/fatline-nginx:candidate | head -1)
+          redis_id=$(podman image inspect localhost/fatline-redis:candidate --format '{{.Id}}')
+          nginx_id=$(podman image inspect localhost/fatline-nginx:candidate --format '{{.Id}}')
           test -n "$redis_id" && test -n "$nginx_id"
           podman tag "$redis_id" "$REDIS_IMAGE"
           podman tag "$nginx_id" "$NGINX_IMAGE"
