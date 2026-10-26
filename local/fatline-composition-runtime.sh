@@ -91,7 +91,8 @@ api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 # a separate qualification gate. Do not equate this with production ACL approval.
 bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 subscriber_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-bash ./fatline-acl-fixture.sh "$work/users.acl" "$redis_pass" "$subscriber_pass" "$bootstrap_pass"
+skymill_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+bash ./fatline-acl-fixture.sh "$work/users.acl" "$redis_pass" "$subscriber_pass" "$bootstrap_pass" "$skymill_pass"
 chmod 644 "$work/users.acl" # Rootless Redis UID 65534 must read this bind mount.
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
@@ -187,6 +188,10 @@ redis_cli() {
 subscriber_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
     "$redis_image" -h 127.0.0.1 -p 6379 --user subscriber -a "$subscriber_pass" --no-auth-warning "$@"
+}
+skymill_cli() {
+  podman run --rm --network "container:$nginx" --entrypoint "$cli" \
+    "$redis_image" -h 127.0.0.1 -p 6379 --user skymill -a "$skymill_pass" --no-auth-warning "$@"
 }
 bootstrap_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
