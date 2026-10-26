@@ -918,7 +918,12 @@ PY
             [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
               { echo "FAIL: Logma restarted during lifecycle recovery" >&2; exit 1; }
             echo "PASS: Logma lifecycle listing, tick, and registration recovered without Logma restart"
-            echo "Crash-window fail-closed behavior remains a separate qualification gate."
+            if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
+              echo "PASS: crash-window lifecycle tick fail-closed and post-reconciliation recovery"
+              echo "Strict HTTP readiness remains unqualified."
+            else
+              echo "Crash-window fail-closed behavior remains a separate qualification gate."
+            fi
           fi
           if [[ "${COMPOSITION_TIMER_STATE_MODE:-0}" == 1 ]]; then
             echo "CHECK: Redis timer keys reconstructed after RAM-only restart"
