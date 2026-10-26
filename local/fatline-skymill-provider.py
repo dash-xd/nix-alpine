@@ -9,6 +9,7 @@ the host only, never the public interface.
 import base64
 import json
 import os
+import urllib.parse
 import subprocess
 import time
 import urllib.error
@@ -35,8 +36,8 @@ args = ["podman", "run", "-d", "--name", name, "--network", network,
         "-p", "127.0.0.1:" + port + ":8081",
         "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
-        "-e", "REDIS_URL=redis://redis-proxy:6379/0",
-        "-e", "FATLINE_REDIS_URL=redis://redis-proxy:6379/0",
+        "-e", "REDIS_URL=redis://skymill:" + urllib.parse.quote(password, safe="") + "@redis-proxy:6379/0",
+        "-e", "FATLINE_REDIS_URL=redis://skymill:" + urllib.parse.quote(password, safe="") + "@redis-proxy:6379/0",
         "-e", "REDIS_USERNAME=skymill",
         "-e", "REDIS_PASSWORD=" + password,
         "-e", "SKYMILL_SCOPED_PROVIDER=true",
