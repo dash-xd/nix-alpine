@@ -461,6 +461,12 @@ qualify-deployment:
 	@$(MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/local/fatline" TARGET='#deployment' SCOPE="$(SCOPE)"
 	@bash ./qualify-deployment.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)"
 
+# Disposable rootless Redis UID/socket and ACL qualification; no host unit changes.
+.PHONY: qualify-deployment-socket
+qualify-deployment-socket:
+	@$(MAKE) qualify-deployment SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
+	@bash ./qualify-deployment-socket.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_REDIS_IMAGE)"
+
 # Host-only inspection. FILTER is a POSIX extended regex for image names.
 # Cleanup is opt-in, scoped to disposable fatline-composition-* resources.
 MODE ?= inspect
