@@ -90,7 +90,8 @@ api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 # Restrict keyspace; lifecycle runtime's complete command-level ACL remains
 # a separate qualification gate. Do not equate this with production ACL approval.
 bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall +time\nuser bootstrap on >%s ~* &* +@all\n' "$redis_pass" "$bootstrap_pass" > "$work/users.acl"
+subscriber_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \\n')
+printf 'user default off\nuser logma on >%s ~logma:* ~active_subscriptions:* ~subscription_groups:* &logma:qualification:* +@read +@write +@pubsub +ping -@admin -@dangerous +fcall +time\nuser subscriber on >%s resetkeys &logma:qualification:dispatch:* +subscribe +ping\nuser bootstrap on >%s ~* &* +@all\n' "$redis_pass" "$subscriber_pass" "$bootstrap_pass" > "$work/users.acl"
 chmod 644 "$work/users.acl"
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
@@ -182,6 +183,10 @@ cli="${cli_entry%redis-server}redis-cli"
 redis_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
     "$redis_image" -h 127.0.0.1 -p 6379 --user logma -a "$redis_pass" --no-auth-warning "$@"
+}
+subscriber_cli() {
+  podman run --rm --network "container:$nginx" --entrypoint "$cli" \
+    "$redis_image" -h 127.0.0.1 -p 6379 --user subscriber -a "$subscriber_pass" --no-auth-warning "$@"
 }
 bootstrap_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
@@ -493,16 +498,16 @@ if [[ "${COMPOSITION_DISPATCH_MODE:-0}" == 1 ]]; then
   dispatch_key="logma:lifecycle:{deployment:$dispatch_id}:lifecycle:timers"
   dispatch_log="$work/dispatch-subscriber.log"
   # --raw emits each RESP2 subscribe event on separate lines.
-  redis_cli --raw SUBSCRIBE "$dispatch_channel" >"$dispatch_log" 2>&1 &
+  subscriber_cli --raw SUBSCRIBE "$dispatch_channel" >"$dispatch_log" 2>&1 &
   subscriber_pid=$!
   # Wait for Redis to confirm an actual subscriber before registering.
   ready=0
   for i in $(seq 1 40); do
-    count=$(redis_cli PUBSUB NUMSUB "$dispatch_channel" | tail -n 1)
-    if [[ "$count" == 1 ]]; then ready=1; break; fi
+    if grep -Fxq "subscribe" "$dispatch_log" && grep -Fxq "$dispatch_channel" "$dispatch_log"; then ready=1; break; fi
+    if ! kill -0 "$subscriber_pid" 2>/dev/null; then break; fi
     sleep .25
   done
-  [[ "$ready" == 1 ]] || { echo "FAIL: Redis subscriber not ready" >&2; exit 1; }
+  [[ "$ready" == 1 ]] || { echo "FAIL: Redis subscriber not ready" >&2; cat "$dispatch_log" >&2; exit 1; }
   # Select a published policy with duration >= 30 seconds, and backdate
   # activation to make its deadline approximately 8 seconds from now.
   curl -fsS --max-time 5 -H "X-API-Key: $api_pass" "$url" > "$work/dispatch-policies.json"
