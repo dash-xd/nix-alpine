@@ -1,0 +1,65 @@
+name: Blacksmith systemd capability qualification
+on:
+  push:
+    branches: [codex/fatline-composition-qualification]
+    paths:
+      - .github/workflows/fatline-blacksmith-systemd.yml
+      - .github/dispatch/fatline-systemd-capability.request.json
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fatline-systemd-capability
+  cancel-in-progress: false
+jobs:
+  systemd-capability:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate pseudo-dispatch request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          jq -e '.schema == 1 and .execute == true and .gate == "systemd-capability" and .runner == "blacksmith-4vcpu-ubuntu-2404"' .github/dispatch/fatline-systemd-capability.request.json >/dev/null
+      - name: Probe systemd, user manager and rootless Podman
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "Kernel: $(uname -a)"
+          echo "PID1: $(ps -p 1 -o comm=)"
+          test "$(ps -p 1 -o comm=)" = systemd || { echo "FAIL: PID1 is not systemd"; exit 1; }
+          systemctl is-system-running || test "$(systemctl is-system-running)" = degraded
+          id
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset}"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
+          command -v loginctl
+          loginctl user-status "$(id -un)" || true
+          if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]]; then
+            echo "User bus missing; attempting runner-local user manager initialization"
+            sudo loginctl enable-linger "$(id -un)"
+            sudo systemctl start "user@$(id -u).service"
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+            for i in $(seq 1 30); do test -S "$XDG_RUNTIME_DIR/bus" && break; sleep 1; done
+          fi
+          test -S "$XDG_RUNTIME_DIR/bus" || { echo "FAIL: user D-Bus socket absent after bootstrap"; exit 1; }
+          systemctl --user show-environment
+          if ! command -v podman; then
+            sudo apt-get update
+            sudo apt-get install -y podman uidmap dbus-user-session
+          fi
+          podman info --format '{{.Host.Security.Rootless}}' | grep -Fx true
+          podman info --format '{{.Host.CgroupVersion}}'
+          command -v quadlet || true
+          test -x /usr/libexec/podman/quadlet || test -x /usr/lib/podman/quadlet || { echo "FAIL: Quadlet generator missing"; exit 1; }
+          echo "PASS: Blacksmith systemd user manager and rootless Podman capability"
+          {
+            echo '## Blacksmith systemd capability'
+            echo '- User manager: passed'
+            echo '- Rootless Podman: passed'
+            echo '- Quadlet generator: passed'
+            echo '- Disposable VM: no production services modified'
+          } >> "$GITHUB_STEP_SUMMARY"
