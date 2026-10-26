@@ -147,6 +147,7 @@ qualify-component:
 	    redis:socket) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
 	    redis:all) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
 	    fatline:deployment) $(MAKE) qualify-deployment SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
+    fatline:mixed) $(MAKE) qualify-deployment DEPLOYMENT_OUTPUT=deployment-mixed SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
     logma:provider) $(MAKE) qualify-composition-baseline SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
     skymill:provider) $(MAKE) qualify-composition-skymill-provider SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
 	    *) echo "Unsupported component gate: COMPONENT=$(COMPONENT) GATE=$(GATE)" >&2; exit 2;; \
