@@ -237,8 +237,7 @@ qualify-composition-logma-image:
 
 qualify-composition-skymill-provider:
 	@$(MAKE) sync REPO=xd-dash/skymill BRANCH="$(COMPOSITION_SKYMILL_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_SKYMILL_CHECKOUT)"
-	@actual=$(git -C "$(WORKSPACES)/$(COMPOSITION_SKYMILL_CHECKOUT)" rev-parse HEAD); \
-	  test "$actual" = "$(COMPOSITION_SKYMILL_REV)" || { echo "FAIL: Skymill source revision $actual does not match pinned $(COMPOSITION_SKYMILL_REV)" >&2; exit 1; }
+	@git -C "$(WORKSPACES)/$(COMPOSITION_SKYMILL_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_SKYMILL_REV)" >/dev/null || { echo "FAIL: Skymill source does not match pinned revision $(COMPOSITION_SKYMILL_REV)" >&2; exit 1; }
 	@$(MAKE) build FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
