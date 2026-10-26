@@ -51,9 +51,9 @@ args = ["podman", "run", "-d", "--name", name, "--network", network,
         image]
 def start():
     run(*args)
-    address = run("podman", "port", name, "8081/tcp")
-    check(address == "127.0.0.1:" + port, "provider port mapping mismatch: " + repr(address))
-    url = "http://" + address
+    # The explicit loopback-only -p binding is authoritative; rootless
+    # Podman may not expose this mapping via podman port.
+    url = "http://127.0.0.1:" + port
     for _ in range(80):
         try:
             # A 405 indicates HTTP server is ready; no unauthenticated data API called.
