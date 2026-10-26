@@ -1,15 +1,29 @@
 name: Blacksmith systemd capability qualification
 on:
+  push:
+    branches: [codex/fatline-composition-qualification]
+    paths:
+      - .github/workflows/fatline-blacksmith-systemd.yml
+      - .github/dispatch/fatline-systemd-capability.request.json
   workflow_dispatch:
-  repository_dispatch:
-    types: [fatline-systemd-capability]
 permissions:
   contents: read
+concurrency:
+  group: fatline-systemd-capability
+  cancel-in-progress: false
 jobs:
   systemd-capability:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate pseudo-dispatch request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          jq -e '.schema == 1 and .execute == true and .gate == "systemd-capability" and .runner == "blacksmith-4vcpu-ubuntu-2404"' .github/dispatch/fatline-systemd-capability.request.json >/dev/null
       - name: Probe systemd, user manager and rootless Podman
         shell: bash
         run: |
@@ -26,7 +40,10 @@ jobs:
           test -n "${XDG_RUNTIME_DIR:-}" || { echo "FAIL: no user runtime directory"; exit 1; }
           test -S "$XDG_RUNTIME_DIR/bus" || { echo "FAIL: user D-Bus socket absent"; exit 1; }
           systemctl --user show-environment
-          command -v podman || { echo "FAIL: Podman unavailable"; exit 1; }
+          if ! command -v podman; then
+            sudo apt-get update
+            sudo apt-get install -y podman uidmap dbus-user-session
+          fi
           podman info --format '{{.Host.Security.Rootless}}' | grep -Fx true
           podman info --format '{{.Host.CgroupVersion}}'
           command -v quadlet || true
