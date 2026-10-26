@@ -11,6 +11,8 @@ name="fatline-socket-$$"
 cleanup() {
   code=$?
   podman rm -f "$name" >/dev/null 2>&1 || true
+  podman unshare chmod 700 "$work/socket" 2>/dev/null || true
+  podman unshare chown "$(id -u):$(id -g)" "$work/socket" 2>/dev/null || true
   chmod -R u+rwX "$work" 2>/dev/null || true
   rm -rf -- "$work" || code=1
   exit "$code"
@@ -58,7 +60,7 @@ fi
 echo "PASS: mapped UID socket, provider-container authenticated PING and write denial"
 podman rm -f "$name" >/dev/null
 # Redis is RAM-only. Socket should be recreated on restart, not reused.
-rm -f "$work/socket/redis.sock" 2>/dev/null || true
+podman unshare rm -f "$work/socket/redis.sock"
 start
 probe
 echo "PASS: authenticated provider socket access after Redis restart"
