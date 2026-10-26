@@ -13,13 +13,14 @@ run_gate() {
     lifecycle-dispatch) make qualify-composition-lifecycle-dispatch ;;
     timer-recovery) make qualify-composition-lifecycle-timer-recovery ;;
     acl-isolation) make qualify-composition-acl-isolation ;;
+    skymill-acl) make qualify-composition-skymill-acl ;;
     cold-start) make qualify-composition-cold-start ;;
     *) echo "Unknown Fatline gate: $1" >&2; exit 2 ;;
   esac
 }
 if [[ $gate == all ]]; then
   echo "CHECK: all registered Fatline composition gates"
-  for name in baseline acl-isolation cold-start timer-recovery lifecycle-dispatch; do
+  for name in baseline acl-isolation skymill-acl cold-start timer-recovery lifecycle-dispatch; do
     echo "CHECK: Fatline composition gate $name"
     run_gate "$name"
     echo "PASS: Fatline composition gate $name"
