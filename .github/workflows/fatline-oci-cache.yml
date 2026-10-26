@@ -62,8 +62,12 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/agni" rev-parse HEAD)" = "$AGNI_SHA"
           nix build --no-link --print-out-paths ./release/components/redis#image > "$RUNNER_TEMP/redis-out"
           nix build --no-link --print-out-paths "$RUNNER_TEMP/agni/local/fatline#nginx-image" > "$RUNNER_TEMP/nginx-out"
-          podman load -i "$(cat "$RUNNER_TEMP/redis-out")"
-          podman load -i "$(cat "$RUNNER_TEMP/nginx-out")"
+          redis_archive=$(cat "$RUNNER_TEMP/redis-out")
+          case "$redis_archive" in *.tar|*.tar.gz) ;; *) echo "Unexpected Redis archive path: $redis_archive" >&2; exit 1;; esac
+          podman load -i "$redis_archive"
+          nginx_archive=$(cat "$RUNNER_TEMP/nginx-out")
+          case "$nginx_archive" in *.tar|*.tar.gz) ;; *) echo "Unexpected Nginx archive path: $nginx_archive" >&2; exit 1;; esac
+          podman load -i "$nginx_archive"
           redis_id=$(podman images --format '{{.ID}}' localhost/fatline-redis:candidate | head -1)
           nginx_id=$(podman images --format '{{.ID}}' localhost/fatline-nginx:candidate | head -1)
           test -n "$redis_id" && test -n "$nginx_id"
