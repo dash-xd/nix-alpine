@@ -30,7 +30,7 @@ jobs:
           bash -n local/ci-image-archives.sh local/qualify-deployment-transport.sh local/qualify-ci-quadlet.sh local/fatline-composition-runtime.sh
           echo 'PASS: pinned request and shell syntax; runtime remains unqualified'
   archive-parity:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.RUNNER_LABEL || 'blacksmith-2vcpu-ubuntu-2404' }}
     timeout-minutes: 45
     env:
       ARCHIVES: ${{ github.workspace }}/.fatline-image-archives
