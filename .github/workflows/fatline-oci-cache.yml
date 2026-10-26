@@ -6,6 +6,7 @@ on:
       - .github/workflows/fatline-oci-cache.yml
       - .github/dispatch/fatline-oci-cache.request.json
       - local/ci-image-archives.sh
+      - local/qualify-deployment-transport.sh
   workflow_dispatch:
 permissions:
   contents: read
@@ -68,6 +69,12 @@ jobs:
           podman tag "$redis_id" "$REDIS_IMAGE"
           podman tag "$nginx_id" "$NGINX_IMAGE"
           bash local/ci-image-archives.sh export "$ARCHIVES" "$REDIS_IMAGE" "$NGINX_IMAGE"
+          deployment=$(nix build --no-link --print-out-paths "$RUNNER_TEMP/agni/local/fatline#deployment-mixed")
+          mkdir -p "$ARCHIVES/deployment-mixed"
+          cp -rL "$deployment/." "$ARCHIVES/deployment-mixed/"
+          test -s "$ARCHIVES/deployment-mixed/config/redis.conf"
+          test -s "$ARCHIVES/deployment-mixed/config/redis-proxy.conf"
+          (cd "$ARCHIVES" && find deployment-mixed -type f -print0 | sort -z | xargs -0 sha256sum > deployment-files.sha256)
       - name: Verify archive checksums and image identities on fresh Podman storage
         shell: bash
         run: |
@@ -77,11 +84,14 @@ jobs:
           bash local/ci-image-archives.sh import "$ARCHIVES" "$REDIS_IMAGE" "$NGINX_IMAGE"
           podman image exists "$REDIS_IMAGE"
           podman image exists "$NGINX_IMAGE"
+          (cd "$ARCHIVES" && sha256sum --check deployment-files.sha256)
+          FATLINE_DEPLOYMENT_DIR="$ARCHIVES/deployment-mixed" bash local/qualify-deployment-transport.sh unused unused "$REDIS_IMAGE" "$NGINX_IMAGE" ci
           {
             echo '## OCI archive qualification'
             echo "- Nix build needed: ${{ steps.cache.outputs.cache-hit != 'true' }}"
             echo '- Compressed archive SHA-256: verified'
             echo '- Loaded Podman image identities: verified'
             echo '- Persistent Nix store cache: not used'
-            echo '- Runtime services: not activated'
+            echo '- Redis Unix/TCP transport and restart recovery: qualified'
+            echo '- Runtime services: disposable Podman only; no systemd activation'
           } >> "$GITHUB_STEP_SUMMARY"
