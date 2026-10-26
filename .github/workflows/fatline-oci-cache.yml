@@ -15,6 +15,20 @@ concurrency:
   group: fatline-oci-cache
   cancel-in-progress: false
 jobs:
+  source-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate pinned request and runtime shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          jq -e '.schema == 1 and .execute == true and .gate == "oci-archive" and (.agni_sha | test("^[a-f0-9]{40}$"))' .github/dispatch/fatline-oci-cache.request.json >/dev/null
+          bash -n local/ci-image-archives.sh local/qualify-deployment-transport.sh local/qualify-ci-quadlet.sh local/fatline-composition-runtime.sh
+          echo 'PASS: pinned request and shell syntax; runtime remains unqualified'
   archive-parity:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
