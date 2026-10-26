@@ -30,8 +30,6 @@ RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
 RELEASE_IMPORT_RECORD ?= $(RELEASE_STATE)/$(COMPONENT)/$(RELEASE_VERSION).import.json
 PACKAGE ?= ./...
 CGO ?= 0
-GO_VERSION ?= go
-GO_COMPILER ?= gcc
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 REPO ?=
@@ -260,13 +258,13 @@ qualify-composition-preflight:
 	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Run Go tests in any mounted workspace, without host Go or a repository check output.
-# CGO=0 is the lightweight default; CGO=1 supplies GCC from Nix.
+# CGO=0 is the lightweight default; CGO=1 requires a compiler in the selected devShell.
 # The Nix shell installs tools into PATH only for this command.
 test-go:
 	@test -f "$(WORKSPACES)/$(FLAKE)/go.mod" || { echo "Go module not found: $(WORKSPACES)/$(FLAKE)/go.mod (set FLAKE=workspace/path)" >&2; exit 2; }
 	@case "$(CGO)" in 0|1) ;; *) echo "CGO must be 0 or 1" >&2; exit 2;; esac
 	@podman exec -w "$(FLAKE_PATH)" -e CGO_ENABLED="$(CGO)" -e GOWORK=off "$(CONTAINER)" \
-		nix shell --no-write-lock-file "$(GO_VERSION)" $(if $(filter 1,$(CGO)),"$(GO_COMPILER)") --command \
+		nix develop --no-write-lock-file "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c \
 		go test -count=1 $(PACKAGE) $(ARGS)
 
 test-go-sync:
