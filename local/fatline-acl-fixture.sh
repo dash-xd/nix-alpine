@@ -25,8 +25,8 @@ for cmd in "${logma_commands[@]}"; do logma_rules+=("+$cmd"); done
   # Scope and stream naming follows Skymill ScopedRedisRequirements.
   # This fixture is deliberately one scope/stream, not an arbitrary tenant wildcard.
   stream='fatline-qual:skymill:stream:github.webhooks'
-  encoded=$(printf '%s' "$stream" | base64 | tr -d '\\n=' | tr '+/' '-_')
-  printf 'user skymill on >%s resetkeys ~%s ~fatline-qual:skymill:idempotency:%s:* resetchannels +ping +hello +client +select +get +set +eval +xadd +xread +xreadgroup +xgroup +xpending +xclaim +xack +xinfo\\n' "$skymill_pass" "$stream" "$encoded"
+  encoded=$(printf '%s' "$stream" | base64 | tr -d '\n=' | tr '+/' '-_')
+  printf 'user skymill on >%s resetkeys ~%s ~fatline-qual:skymill:idempotency:%s:* resetchannels +ping +hello +client +select +get +set +eval +xadd +xread +xreadgroup +xgroup +xpending +xclaim +xack +xinfo\n' "$skymill_pass" "$stream" "$encoded"
   printf 'user bootstrap on >%s ~* &* +@all\n' "$bootstrap_pass"
 } > "$out"
 chmod 644 "$out" # Redis runs as UID 65534 in a rootless container; parent temp directory remains private.
