@@ -794,8 +794,21 @@ PY
         echo "CHECK: unexpected Redis crash with Logma remaining active"
         old_redis_id=$(podman inspect "$redis" --format '{{.Id}}')
         old_logma_id=$(podman inspect "$logma" --format '{{.Id}}')
-        if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
+        if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 && "${COMPOSITION_CRASH_WINDOW_MODE:-0}" != 1 ]]; then
           systemctl --user start "$scope-reconcile.timer"
+        fi
+        if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
+          echo "CHECK: Logma function-dependent operation while Redis is unavailable"
+          podman pause "$redis" >/dev/null
+          window_port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
+          [[ "$window_port" =~ ^[0-9]+$ ]] || { echo "FAIL: cannot resolve Logma port" >&2; exit 1; }
+          window_url="http://127.0.0.1:$window_port/lifecycle/tick"
+          unavailable_status=$(curl -sS --connect-timeout 1 --max-time 2 -o "$work/unavailable-response.json" -w '%{http_code}' -X POST -H "X-API-Key: $api_pass" "$window_url" 2>/dev/null || true)
+          podman unpause "$redis" >/dev/null
+          [[ "$unavailable_status" != 200 && "$unavailable_status" != 204 ]] || {
+            echo "FAIL: Logma reported successful lifecycle tick while Redis was paused" >&2; exit 1;
+          }
+          echo "PASS: lifecycle tick did not report success with Redis unavailable (HTTP $unavailable_status)"
         fi
         podman kill --signal KILL "$redis" >/dev/null
         restarted=false
@@ -816,6 +829,15 @@ PY
         [[ -z "$function_listing" ]] ||
           { printf 'FAIL: expected empty Redis Function library after crash, got: %s\n' "$function_listing" >&2; exit 1; }
         echo "PASS: systemd restarted Redis after SIGKILL; Logma container remained unchanged; RAM-only Functions absent"
+        if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
+          echo "CHECK: Logma lifecycle tick while Redis is reachable but Functions are missing"
+          missing_status=$(curl -sS --connect-timeout 1 --max-time 5 -o "$work/missing-functions-response.json" -w '%{http_code}' -X POST -H "X-API-Key: $api_pass" "$window_url" 2>/dev/null || true)
+          [[ "$missing_status" != 200 && "$missing_status" != 204 ]] || {
+            echo "FAIL: Logma reported successful lifecycle tick without Redis Functions" >&2; exit 1;
+          }
+          echo "PASS: lifecycle tick did not report success without Redis Functions (HTTP $missing_status)"
+          systemctl --user start "$scope-reconcile.timer"
+        fi
         if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
           echo "CHECK: timer-driven Redis Function reconciliation without Logma replacement"
           reconciled=false
@@ -881,6 +903,9 @@ PY
               -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick" || true)
             [[ "$recovered_tick_status" == 200 ]] ||
               { echo "FAIL: lifecycle tick after Redis crash returned HTTP $recovered_tick_status" >&2; cat "$work/crash-tick.json" >&2 || true; exit 1; }
+            if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
+              echo "PASS: lifecycle tick recovered after Functions reconciliation, without Logma replacement"
+            fi
             recovered_deployment="crash-recovered-$"
             recovered_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$recovered_deployment" "$policy_code")
             recovered_register_status=$(curl -sS --max-time 10 -o "$work/crash-register.json" -w '%{http_code}' \
