@@ -20,6 +20,7 @@ run_gate() {
     live-redis-recovery) make qualify-composition-live-redis-recovery ;;
     function-reconciliation) make qualify-composition-function-reconciliation ;;
     lifecycle-crash) make qualify-composition-lifecycle-crash ;;
+    crash-window) make qualify-composition-crash-window ;;
     cold-start) make qualify-composition-cold-start ;;
     *) echo "Unknown Fatline gate: $1" >&2; exit 2 ;;
   esac
