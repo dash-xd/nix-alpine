@@ -13,6 +13,7 @@ if [[ "$mode" == export ]]; then
   for image in "$@"; do
     [[ "$image" =~ ^[a-zA-Z0-9_./:-]+$ ]] || { echo "Invalid image ref: $image" >&2; exit 2; }
     id=$(podman image inspect "$image" --format '{{.Id}}')
+    id="sha256:${id#sha256:}"
     filename=$(printf '%s' "$image" | sha256sum | cut -d' ' -f1).tar.gz
     podman save --format docker-archive "$image" | gzip -n > "$directory/$filename"
     digest=$(sha256sum "$directory/$filename" | cut -d' ' -f1)
@@ -29,6 +30,7 @@ else
     [[ "$(sha256sum "$directory/$filename" | cut -d' ' -f1)" == "$digest" ]] || { echo "Archive checksum mismatch: $filename" >&2; exit 1; }
     gzip -dc "$directory/$filename" | podman load >/dev/null
     actual=$(podman image inspect "$ref" --format '{{.Id}}')
+    actual="sha256:${actual#sha256:}"
     [[ "$actual" == "$expected_id" ]] || { echo "Image ID mismatch for $ref" >&2; exit 1; }
     echo "PASS: $ref archive checksum and loaded image ID verified"
   done
