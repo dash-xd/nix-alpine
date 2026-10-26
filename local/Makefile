@@ -137,6 +137,12 @@ sync-component:
 
 # Run both component-owned Nix gates after fast-forwarding the workspace.
 # Fail on the first unsuccessful gate; no ledger records or image tags touched.
+# Runtime gate is disposable and does not install user services.
+.PHONY: qualify-deployment-transport
+qualify-deployment-transport:
+	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
+	@bash ./qualify-deployment-transport.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(SCOPE)"
+
 qualify-component:
 	@if [[ -n "$(REPO)" ]]; then \
 	  $(MAKE) sync-component REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)" && \
@@ -147,6 +153,7 @@ qualify-component:
 	    redis:socket) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
 	    redis:all) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
 	    fatline:deployment) $(MAKE) qualify-deployment SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
+    fatline:transport) $(MAKE) qualify-deployment-transport SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
     fatline:mixed) $(MAKE) qualify-deployment DEPLOYMENT_OUTPUT=deployment-mixed SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
     logma:provider) $(MAKE) qualify-composition-baseline SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
     skymill:provider) $(MAKE) qualify-composition-skymill-provider SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
