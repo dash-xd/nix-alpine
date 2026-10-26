@@ -24,4 +24,4 @@ for cmd in "${logma_commands[@]}"; do logma_rules+=("+$cmd"); done
   printf 'user subscriber on >%s resetkeys resetchannels &logma:qualification:dispatch:* +subscribe +ping\n' "$subscriber_pass"
   printf 'user bootstrap on >%s ~* &* +@all\n' "$bootstrap_pass"
 } > "$out"
-chmod 600 "$out"
+chmod 644 "$out" # Redis runs as UID 65534 in a rootless container; parent temp directory remains private.
