@@ -64,6 +64,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
 help:
+	@echo "make inventory COMPONENT=fatline (host inventory; read-only)"
 	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
@@ -452,7 +453,10 @@ release-latest:
 FATLINE_IMAGE_FILTER ?= redis|logma|skymill|nginx
 FATLINE_CONFIG ?= $(HOME)/.config/fatline
 FATLINE_UNIT_PATTERN ?= fatline*
-.PHONY: fatline-inventory
+.PHONY: inventory fatline-inventory
+inventory:
+	@case "$(COMPONENT)" in fatline) $(MAKE) fatline-inventory FATLINE_IMAGE_FILTER="$(FATLINE_IMAGE_FILTER)" FATLINE_CONFIG="$(FATLINE_CONFIG)" FATLINE_UNIT_PATTERN="$(FATLINE_UNIT_PATTERN)";; *) echo "Unsupported inventory component: $(COMPONENT)" >&2; exit 2;; esac
+
 fatline-inventory:
 	@printf '\n=== Available images ===\n'
 	@podman images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E -- '$(FATLINE_IMAGE_FILTER)' || true
