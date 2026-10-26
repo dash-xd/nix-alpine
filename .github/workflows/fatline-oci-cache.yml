@@ -7,6 +7,7 @@ on:
       - .github/dispatch/fatline-oci-cache.request.json
       - local/ci-image-archives.sh
       - local/qualify-deployment-transport.sh
+      - local/qualify-ci-quadlet.sh
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if ! command -v podman; then sudo apt-get update && sudo apt-get install -y podman uidmap; fi
+          if ! command -v podman; then sudo apt-get update && sudo apt-get install -y podman uidmap dbus-user-session; fi
           podman info --format '{{.Host.Security.Rootless}}' | grep -Fx true
       - name: Restore compressed OCI image archives
         id: cache
@@ -95,3 +96,21 @@ jobs:
             echo '- Redis Unix/TCP transport and restart recovery: qualified'
             echo '- Runtime services: disposable Podman only; no systemd activation'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Qualify isolated runner systemd-user Quadlet lifecycle and rollback
+        shell: bash
+        env:
+          FATLINE_CI_DISPOSABLE_RUNNER: '1'
+        run: |
+          set -Eeuo pipefail
+          test "$(ps -p 1 -o comm=)" = systemd
+          if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]]; then
+            sudo loginctl enable-linger "$(id -un)"
+            sudo systemctl start "user@$(id -u).service"
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+            for i in $(seq 1 30); do test -S "$XDG_RUNTIME_DIR/bus" && break; sleep 1; done
+          fi
+          test -S "$XDG_RUNTIME_DIR/bus"
+          systemctl --user show-environment
+          bash local/qualify-ci-quadlet.sh "$NGINX_IMAGE"
+          echo '- Disposable Quadlet lifecycle and rollback: passed' >> "$GITHUB_STEP_SUMMARY"
