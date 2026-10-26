@@ -92,7 +92,7 @@ api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 subscriber_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 bash ./fatline-acl-fixture.sh "$work/users.acl" "$redis_pass" "$subscriber_pass" "$bootstrap_pass"
-chmod 600 "$work/users.acl"
+chmod 644 "$work/users.acl" # Rootless Redis UID 65534 must read this bind mount.
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
 if [[ "$redis_quadlet_mode" == 1 ]]; then
