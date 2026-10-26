@@ -13,7 +13,7 @@ permissions:
   contents: read
 concurrency:
   group: fatline-oci-cache
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   source-preflight:
     runs-on: ubuntu-latest
