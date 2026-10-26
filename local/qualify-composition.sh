@@ -2,11 +2,22 @@
 # Explicit Fatline composition gate registry. Fail closed on unknown gates.
 set -Eeuo pipefail
 [[ $# == 4 && $1 == --composition && $3 == --gate ]] || {
-  echo "Usage: $0 --composition fatline --gate GATE" >&2; exit 2;
+  echo "Usage: $0 --composition fatline|logma-image|skymill-provider --gate GATE" >&2; exit 2;
 }
 composition=$2 gate=$4
-[[ $composition == fatline ]] || { echo "Unsupported composition: $composition" >&2; exit 2; }
 cd "$(dirname "$0")"
+# Component artifact workflows share the composition entrypoint but do not
+# inherit Fatline runtime gates or claim release qualification.
+case "$composition" in
+  logma-image)
+    [[ "$gate" == all ]] || { echo "logma-image does not support GATE=$gate" >&2; exit 2; }
+    exec make qualify-composition-logma-image ;;
+  skymill-provider)
+    [[ "$gate" == all ]] || { echo "skymill-provider does not support GATE=$gate" >&2; exit 2; }
+    exec make qualify-composition-skymill-provider ;;
+  fatline) ;;
+  *) echo "Unsupported composition: $composition" >&2; exit 2 ;;
+esac
 run_gate() {
   case "$1" in
     baseline) make qualify-composition-baseline ;;
