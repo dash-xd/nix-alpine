@@ -61,6 +61,7 @@ DropCapability=all
 [Service]
 Restart=no
 EOF
+chmod 755 "$work"
 chmod 644 "$unit" "$work/nginx.conf"
 systemctl --user daemon-reload
 systemctl --user cat "$service" >/dev/null
