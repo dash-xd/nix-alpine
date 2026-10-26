@@ -52,20 +52,24 @@ args = ["podman", "run", "-d", "--name", name, "--network", network,
         image]
 def start():
     run(*args)
-    # The explicit loopback-only -p binding is authoritative; rootless
-    # Podman may not expose this mapping via podman port.
     url = "http://127.0.0.1:" + port
+    last_error = "no HTTP response"
     for _ in range(80):
+        state = run("podman", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}}", name)
+        if not state.startswith("running"):
+            raise RuntimeError("FAIL: provider exited: " + state + "\n" + run("podman", "logs", name))
         try:
-            # A 405 indicates HTTP server is ready; no unauthenticated data API called.
-            urllib.request.urlopen(urllib.request.Request(url + "/v1/messages", method="GET"), timeout=1)
+            with urllib.request.urlopen(urllib.request.Request(url + "/v1/messages", method="GET"), timeout=1) as response:
+                last_error = "unexpected HTTP " + str(response.status)
         except urllib.error.HTTPError as e:
             if e.code == 405:
                 return url
-        except (OSError, TimeoutError):
-            pass
+            last_error = "unexpected HTTP " + str(e.code)
+        except (OSError, TimeoutError) as e:
+            last_error = type(e).__name__ + ": " + str(e)
         time.sleep(.25)
-    raise RuntimeError("FAIL: provider HTTP readiness; logs:\n" + run("podman", "logs", name))
+    state = run("podman", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}}", name)
+    raise RuntimeError("FAIL: provider HTTP readiness: " + last_error + "; state=" + state + "\n" + run("podman", "logs", name))
 
 def post(url, path, payload, timeout=8):
     request = urllib.request.Request(url + path, json.dumps(payload).encode(),
