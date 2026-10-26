@@ -11,6 +11,7 @@ redis="$scope-redis"
 nginx="$scope-nginx"
 logma="$scope-logma"
 skymill_provider="$scope-skymill-provider"
+skymill_provider="$scope-skymill-provider"
 bootstrap="$scope-bootstrap"
 quadlet_mode=${COMPOSITION_QUADLET_MODE:-0}
 redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
@@ -382,6 +383,20 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+if [[ "${COMPOSITION_SKYMILL_PROVIDER_MODE:-0}" == 1 ]]; then
+  provider_image=${COMPOSITION_SKYMILL_IMAGE:-localhost/nix-alpine/skymill:candidate-2026.10.22.1}
+  podman image exists "$provider_image" || {
+    echo "FAIL: Skymill provider image missing: $provider_image (build/import the scoped provider image first)" >&2
+    exit 1
+  }
+  SKYMILL_TEST_NAME="$skymill_provider" \
+  SKYMILL_TEST_IMAGE="$provider_image" \
+  SKYMILL_TEST_NETWORK="$net" \
+  SKYMILL_TEST_PASSWORD="$skymill_pass" \
+  python3 ./fatline-skymill-provider.py
+  echo "PASS: Fatline composition Skymill provider"
+  exit 0
+fi
 if [[ "${COMPOSITION_SKYMILL_PROVIDER_MODE:-0}" == 1 ]]; then
   provider_image=${COMPOSITION_SKYMILL_IMAGE:-localhost/nix-alpine/skymill:candidate-2026.10.22.1}
   podman image exists "$provider_image" || {
