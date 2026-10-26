@@ -2,7 +2,9 @@
 set -Eeuo pipefail
 [[ $# == 2 ]] || { echo "usage: $0 BUILDER AGNI_CHECKOUT" >&2; exit 2; }
 builder=$1 checkout=$2
-out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths "/workspaces/$checkout/local/fatline#deployment")
+output=${DEPLOYMENT_OUTPUT:-deployment}
+case "$output" in deployment|deployment-mixed) ;; *) echo "Invalid deployment fixture: $output" >&2; exit 2;; esac
+out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths "/workspaces/$checkout/local/fatline#$output")
 work=$(mktemp -d)
 trap 'chmod -R u+rwX "$work" 2>/dev/null || true; rm -rf -- "$work"' EXIT
 podman cp "$builder:$out/." - | tar -x --no-same-owner --no-same-permissions -C "$work/"
@@ -40,5 +42,12 @@ grep -Fq 'FATLINE_SKYMILL_READINESS_URL' "$work/readiness/skymill"
 ! grep -Fq '0777' "$work/quadlets/fatline-redis.container"
 grep -Fq 'podman unshare install -d -o 65534 -g 65534 -m 0770' "$work/quadlets/fatline-redis.container"
 grep -Fq 'ExecStart=%h/.config/fatline/reconcile' "$work/quadlets/fatline-reconcile.service"
+if [[ "$output" == deployment-mixed ]]; then
+  grep -Fqx 'Environment=FATLINE_REDIS_TRANSPORT=unix' "$work/quadlets/fatline-logma.container"
+  grep -Fqx 'Environment=FATLINE_REDIS_TRANSPORT=tcp-proxy' "$work/quadlets/fatline-skymill.container"
+  grep -Fq 'Volume=%t/fatline/redis:/run/redis' "$work/quadlets/fatline-logma.container"
+  ! grep -Fq 'Volume=%t/fatline/redis:/run/redis' "$work/quadlets/fatline-skymill.container"
+  echo "PASS: mixed Unix Logma / TCP proxy Skymill structural fixture"
+fi
 echo "PASS: generated deployment structure, per-provider transport contracts, fail-closed readiness and probe syntax"
 echo "UNQUALIFIED: provider-specific client endpoint semantics, TCP proxy runtime, reconciler implementation, image promotion, live deployment"
