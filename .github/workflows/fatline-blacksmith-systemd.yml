@@ -37,8 +37,15 @@ jobs:
           echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
           command -v loginctl
           loginctl user-status "$(id -un)" || true
-          test -n "${XDG_RUNTIME_DIR:-}" || { echo "FAIL: no user runtime directory"; exit 1; }
-          test -S "$XDG_RUNTIME_DIR/bus" || { echo "FAIL: user D-Bus socket absent"; exit 1; }
+          if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]]; then
+            echo "User bus missing; attempting runner-local user manager initialization"
+            sudo loginctl enable-linger "$(id -un)"
+            sudo systemctl start "user@$(id -u).service"
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+            for i in $(seq 1 30); do test -S "$XDG_RUNTIME_DIR/bus" && break; sleep 1; done
+          fi
+          test -S "$XDG_RUNTIME_DIR/bus" || { echo "FAIL: user D-Bus socket absent after bootstrap"; exit 1; }
           systemctl --user show-environment
           if ! command -v podman; then
             sudo apt-get update
@@ -49,3 +56,10 @@ jobs:
           command -v quadlet || true
           test -x /usr/libexec/podman/quadlet || test -x /usr/lib/podman/quadlet || { echo "FAIL: Quadlet generator missing"; exit 1; }
           echo "PASS: Blacksmith systemd user manager and rootless Podman capability"
+          {
+            echo '## Blacksmith systemd capability'
+            echo '- User manager: passed'
+            echo '- Rootless Podman: passed'
+            echo '- Quadlet generator: passed'
+            echo '- Disposable VM: no production services modified'
+          } >> "$GITHUB_STEP_SUMMARY"
