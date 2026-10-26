@@ -12,7 +12,7 @@ cleanup() {
   code=$?
   podman rm -f "$name" >/dev/null 2>&1 || true
   podman unshare chmod 700 "$work/socket" 2>/dev/null || true
-  podman unshare chown "$(id -u):$(id -g)" "$work/socket" 2>/dev/null || true
+  podman unshare chown 0:0 "$work/socket" 2>/dev/null || true
   chmod -R u+rwX "$work" 2>/dev/null || true
   rm -rf -- "$work" || code=1
   exit "$code"
