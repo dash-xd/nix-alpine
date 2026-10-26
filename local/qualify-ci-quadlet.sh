@@ -75,4 +75,4 @@ podman inspect "$container" --format '{{.State.Running}}' | grep -Fx true
 second=$(podman inspect "$container" --format '{{.Id}}')
 [[ "$first" != "$second" ]] || { echo "FAIL: restart did not replace container" >&2; exit 1; }
 echo "PASS: systemd-user Quadlet generated, started, restarted with replacement container"
-echo "PASS: rollback cleanup scheduled via EXIT trap"
+echo "PASS: service startup and restart verified; cleanup will run on exit"
