@@ -48,6 +48,7 @@ COMPOSITION_NGINX_IMAGE ?= localhost/nix-alpine/nginx:qualified-2026.10.23.1
 COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
 COMPOSITION_SKYMILL_IMAGE ?= localhost/skymill-provider:scoped-qualification
 COMPOSITION_SKYMILL_BRANCH ?= codex/scoped-requirements-qualification
+COMPOSITION_SKYMILL_REV ?= 907346ecd74a4d39830347b2ea01dc2b1c6b8969
 COMPOSITION_SKYMILL_CHECKOUT ?= .qualification-skymill-source
 COMPOSITION_LOGMA_BRANCH ?= codex/logma-shared-redis-runtime
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
@@ -236,6 +237,8 @@ qualify-composition-logma-image:
 
 qualify-composition-skymill-provider:
 	@$(MAKE) sync REPO=xd-dash/skymill BRANCH="$(COMPOSITION_SKYMILL_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_SKYMILL_CHECKOUT)"
+	@actual=$(git -C "$(WORKSPACES)/$(COMPOSITION_SKYMILL_CHECKOUT)" rev-parse HEAD); \
+	  test "$actual" = "$(COMPOSITION_SKYMILL_REV)" || { echo "FAIL: Skymill source revision $actual does not match pinned $(COMPOSITION_SKYMILL_REV)" >&2; exit 1; }
 	@$(MAKE) build FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
