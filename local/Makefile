@@ -64,6 +64,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
 help:
+	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
 	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
@@ -446,3 +447,18 @@ release-latest:
 	  version="$$(RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh version "$(COMPONENT)")"; \
 	  echo "Releasing $(COMPONENT) as $$version"; \
 	  $(MAKE) test-release-integration REPO="$(REPO)" COMPONENT="$(COMPONENT)" RELEASE_FLAKE="$(RELEASE_FLAKE)" RELEASE_TARGET="$(RELEASE_TARGET)" RELEASE_VERSION="$$version" SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" RELEASE_STATE="$(RELEASE_STATE)"
+
+# Host-only inspection. FILTER is a POSIX extended regex for image names.
+FATLINE_IMAGE_FILTER ?= redis|logma|skymill|nginx
+FATLINE_CONFIG ?= $(HOME)/.config/fatline
+FATLINE_UNIT_PATTERN ?= fatline*
+.PHONY: fatline-inventory
+fatline-inventory:
+	@printf '\n=== Available images ===\n'
+	@podman images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E -- '$(FATLINE_IMAGE_FILTER)' || true
+	@printf '\n=== Existing Fatline services ===\n'
+	@systemctl --user list-units '$(FATLINE_UNIT_PATTERN)' --all --no-pager
+	@printf '\n=== Existing recovery executables ===\n'
+	@for f in "$(FATLINE_CONFIG)/reconcile" "$(FATLINE_CONFIG)/readiness/redis" "$(FATLINE_CONFIG)/readiness/logma" "$(FATLINE_CONFIG)/readiness/skymill"; do \
+	  if [[ -x "$$f" ]]; then echo "PRESENT: $$f"; else echo "MISSING: $$f"; fi; \
+	done
