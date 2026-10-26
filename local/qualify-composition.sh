@@ -14,6 +14,7 @@ run_gate() {
     timer-recovery) make qualify-composition-lifecycle-timer-recovery ;;
     acl-isolation) make qualify-composition-acl-isolation ;;
     skymill-acl) make qualify-composition-skymill-acl ;;
+    skymill-provider) make qualify-composition-skymill-provider ;;
     cold-start) make qualify-composition-cold-start ;;
     *) echo "Unknown Fatline gate: $1" >&2; exit 2 ;;
   esac
