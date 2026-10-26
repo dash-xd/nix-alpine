@@ -70,6 +70,9 @@ def start():
         if "405 Method Not Allowed" in result.stderr:
             return
         last_error = (result.stderr or result.stdout)[-700:]
+        if "Connection refused" in last_error:
+            tcp = subprocess.run(["podman", "exec", name, "cat", "/proc/net/tcp"], capture_output=True, text=True)
+            last_error += "; provider tcp sockets: " + tcp.stdout[-1000:]
         time.sleep(.25)
     raise RuntimeError("FAIL: private-network HTTP readiness: " + last_error + "\n" + run("podman", "logs", name))
 
