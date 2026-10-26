@@ -69,7 +69,7 @@ systemctl --user start "$service"
 systemctl --user is-active --quiet "$service"
 podman inspect "$container" --format '{{.State.Running}}' | grep -Fx true
 # Verify the service actually responds inside its own isolated namespace.
-health=$(podman exec "$container" nginx -t 2>&1) || { echo "FAIL: Nginx config validation: $health" >&2; exit 1; }
+health=$(podman exec "$container" nginx -t -c /etc/nginx/nginx.conf 2>&1) || { echo "FAIL: Nginx config validation: $health" >&2; exit 1; }
 echo "PASS: running Quadlet container validates its Nginx configuration"
 first=$(podman inspect "$container" --format '{{.Id}}')
 systemctl --user restart "$service"
