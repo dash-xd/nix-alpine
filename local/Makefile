@@ -49,6 +49,8 @@ COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
 COMPOSITION_LOGMA_BRANCH ?= codex/logma-shared-redis-runtime
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
+COMPOSITION ?= fatline
+GATE ?= all
 QUALIFY_AGNI ?= $(WORKSPACES)/agni
 FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -56,9 +58,9 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: test-go test-go-sync qualify-composition-logma-image qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
+.PHONY: test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
 help:
-	@echo "make qualify-composition (sync Agni qualification branch, then preflight and disposable runtime gate)"
+	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
 	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
@@ -184,8 +186,14 @@ qualify-service:
 	@test -f "$(QUALIFY_SMOKE)/qualification/components/run.sh" || { echo "Smoke's shared component runtime qualification is not implemented; refusing to qualify $(QUALIFY_COMPONENT)" >&2; exit 1; }
 	@bash "$(QUALIFY_SMOKE)/qualification/components/run.sh" --component "$(QUALIFY_COMPONENT)" --agni "$(QUALIFY_AGNI)" --builder "$(CONTAINER)" --image "$(QUALIFY_IMAGE)"
 
+# Explicit qualification registry; aliases below remain independently callable.
+qualify:
+	@case "$(LEVEL)" in composition) $(MAKE) qualify-composition COMPOSITION="$(COMPOSITION)" GATE="$(GATE)";; process) $(MAKE) qualify-process;; service) $(MAKE) qualify-service;; *) echo "LEVEL must be process, service or composition" >&2; exit 2;; esac
+
 # Smoke-style disposable runtime gate; Nix owns the configuration artifact.
 qualify-composition:
+	@bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"
+qualify-composition-baseline:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
 	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
@@ -222,6 +230,12 @@ qualify-composition-logma-image:
 	@$(MAKE) build FLAKE="$(COMPOSITION_LOGMA_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(COMPOSITION_LOGMA_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@podman image inspect "$(COMPOSITION_LOGMA_IMAGE)" --format 'PASS: loaded Logma provider image {{.Id}}'
+
+qualify-composition-lifecycle-dispatch:
+	@$(MAKE) qualify-composition-logma-image
+	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
+	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
+	@COMPOSITION_DISPATCH_MODE=1 COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 qualify-composition-lifecycle-timer-recovery:
 	@$(MAKE) qualify-composition-logma-image
