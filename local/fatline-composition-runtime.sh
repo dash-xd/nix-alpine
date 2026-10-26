@@ -27,6 +27,8 @@ quadlet_dir="$HOME/.config/containers/systemd"
 quadlet_file="$quadlet_dir/$scope-logma.container"
 quadlet_service="$scope-logma.service"
 cleanup() {
+  local original_status=$?
+  local cleanup_failed=0
   if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
     systemctl --user stop "$scope-reconcile.timer" "$scope-reconcile.service" >/dev/null 2>&1 || true
     rm -f "$HOME/.config/systemd/user/$scope-reconcile.timer" "$HOME/.config/systemd/user/$scope-reconcile.service"
@@ -52,16 +54,36 @@ cleanup() {
     rm -f "$quadlet_file"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
-  # Remove each owned container independently: a missing name must not mask
-  # removal of the remaining running qualification containers.
+  # Remove dependents before their network namespace providers. In particular,
+  # Logma may depend on Nginx, and Nginx may depend on Redis.
   local owned
-  for owned in "$skymill_provider" "$bootstrap" "$logma" "$nginx" "$redis"; do
+  for owned in "$skymill_provider" "$logma" "$bootstrap" "$nginx" "$redis"; do
     if podman container exists "$owned"; then
-      podman rm -f "$owned" >/dev/null || echo "WARNING: could not remove $owned" >&2
+      if ! podman rm -f "$owned" >/dev/null; then
+        echo "FAIL: could not remove qualification container $owned" >&2
+        cleanup_failed=1
+      fi
     fi
   done
-  podman network rm "$net" >/dev/null 2>&1 || true
+  # A missing or failed removal must not be mistaken for a clean test run.
+  for owned in "$skymill_provider" "$logma" "$bootstrap" "$nginx" "$redis"; do
+    if podman container exists "$owned"; then
+      echo "FAIL: qualification container remains: $owned" >&2
+      cleanup_failed=1
+    fi
+  done
+  if ! podman network rm "$net" >/dev/null 2>&1; then
+    if podman network exists "$net"; then
+      echo "FAIL: qualification network remains: $net" >&2
+      cleanup_failed=1
+    fi
+  fi
   rm -rf "$work"
+  if (( cleanup_failed )); then
+    echo "FAIL: Fatline qualification teardown incomplete" >&2
+    return 1
+  fi
+  return "$original_status"
 }
 diagnose_failure() {
   local code=$?
