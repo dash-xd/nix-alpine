@@ -22,3 +22,15 @@ The durable Logma `.dispatched` marker prevents replays after the marker is writ
 ## Current qualification evidence
 
 The user ran `make qualify-composition COMPOSITION=fatline GATE=all` with exit status 0 on the `codex/fatline-composition-qualification` branch. Baseline, ACL fixture isolation, cold start, timer recovery and lifecycle dispatch all passed. Production policy reconciliation and crash-window delivery guarantees remain open.
+
+## 2026-10-25 implementation: explicit-command test ACL
+
+The previously overlooked Skymill repository is **`xd-dash/skymill`**, not `dash-xd/skymill`. The relevant scoped contract is `provider.go` on `codex/scoped-requirements-qualification` (also inspect `codex/fatline-shared-redis` for integration). Its `ScopedRedisRequirements(scope, stream)` returns `~<stream>` and `~<scope>:skymill:idempotency:<base64url(stream)>:*`, plus `ping hello client select get set eval xadd xread xreadgroup xgroup xpending xclaim xack xinfo`. This is a package-owned scope contract; a generic wildcard like `~skymill:*` would be incorrect. The Skymill main branch is older and lacks this scoped contract.
+
+Ratelimiter `internal/profiledef/profile.go` on main returns `fcall type time zadd hset hexists zrangebyscore hget publish zrem hdel` for the lifecycle profile. It does not grant `FUNCTION` administration. The Logma runtime additionally issues ordinary Redis operations (key reads, writes, etc.) which must be audited separately.
+
+Nix-Alpine now compiles its **disposable qualification-only** Logma ACL through `local/fatline-acl-fixture.sh`: explicit named commands rather than broad `+@read +@write +@pubsub` categories. The harness loads this ACL and runs the existing integration suite. The command union is provisional until all live Logma runtime paths have been exercised. This change must pass the local qualification gate before it can be considered validated.
+
+Next implementation step: an **independent Skymill scoped-principal gate** using the exact `ScopedRedisRequirements` output, a distinct runtime credential, positive `EVAL/XADD/XREADGROUP` flow, and negative tests against Logma keys, adjacent Skymill stream/scope, Redis Function and administration privileges. Do not claim the current five gates test Skymill: the current harness runs only Redis, Nginx and Logma.
+
+The production policy remains external to Agni's host-mounted `users.acl`. Never copy test-generated secrets into production and never identify this fixture as a production policy.
