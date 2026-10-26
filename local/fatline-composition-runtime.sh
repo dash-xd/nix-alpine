@@ -485,6 +485,78 @@ remove_status=$(curl -sS --max-time 10 -o "$work/remove.json" -w '%{http_code}' 
   -X DELETE -H "X-API-Key: $api_pass" "$lifecycle_url/$deployment")
 [[ "$remove_status" == 200 ]] || { echo "Lifecycle remove failed: HTTP $remove_status" >&2; cat "$work/remove.json" >&2; exit 1; }
 echo "PASS: Logma lifecycle register/arm, tick and remove via Redis"
+# Live subscriber qualification: dispatch once, then fence reconciliation and restart.
+if [[ "${COMPOSITION_DISPATCH_MODE:-0}" == 1 ]]; then
+  echo "CHECK: live lifecycle expiration and duplicate-dispatch fence"
+  dispatch_id="dispatch-$"
+  dispatch_channel="logma:qualification:dispatch:$"
+  dispatch_key="logma:lifecycle:{deployment:$dispatch_id}:lifecycle:timers"
+  dispatch_log="$work/dispatch-subscriber.log"
+  # --raw emits each RESP2 subscribe event on separate lines.
+  redis_cli --raw SUBSCRIBE "$dispatch_channel" >"$dispatch_log" 2>&1 &
+  subscriber_pid=$!
+  # Wait for Redis to confirm an actual subscriber before registering.
+  ready=0
+  for i in $(seq 1 40); do
+    count=$(redis_cli PUBSUB NUMSUB "$dispatch_channel" | tail -n 1)
+    if [[ "$count" == 1 ]]; then ready=1; break; fi
+    sleep .25
+  done
+  [[ "$ready" == 1 ]] || { echo "FAIL: Redis subscriber not ready" >&2; exit 1; }
+  # Select a published policy with duration >= 30 seconds, and backdate
+  # activation to make its deadline approximately 8 seconds from now.
+  curl -fsS --max-time 5 -H "X-API-Key: $api_pass" "$url" > "$work/dispatch-policies.json"
+  python3 - "$work/dispatch-policies.json" "$work/dispatch-request.json" "$dispatch_id" "$dispatch_channel" <<'PY'
+import json, sys, re
+from datetime import datetime, timedelta, timezone
+policies = json.load(open(sys.argv[1]))
+def seconds(value):
+    match = re.fullmatch(r'(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?', value)
+    if not match:
+        return None
+    h, m, s = match.groups()
+    return int(h or 0)*3600 + int(m or 0)*60 + float(s or 0)
+candidates = [(seconds(p.get('duration','')),p) for p in policies]
+candidates = [(d,p) for d,p in candidates if d is not None and d >= 30 and str(p.get('policy_code','')).isdigit()]
+if not candidates:
+    raise SystemExit("FAIL: no suitable lifecycle policy for dispatch gate")
+duration, policy = min(candidates, key=lambda item: item[0])
+activated = datetime.now(timezone.utc) - timedelta(seconds=duration-8)
+json.dump({'deployment_id':sys.argv[3], 'policy_code':str(policy['policy_code']),
+           'shutdown_channel':sys.argv[4], 'activated_at':activated.isoformat().replace('+00:00','Z')},
+          open(sys.argv[2],'w'))
+PY
+  dispatch_status=$(curl -sS --max-time 10 -o "$work/dispatch-register.json" -w '%{http_code}' \
+    -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
+    --data-binary "@$work/dispatch-request.json" "$lifecycle_url/")
+  [[ "$dispatch_status" == 201 ]] || { echo "FAIL: dispatch registration HTTP $dispatch_status" >&2; cat "$work/dispatch-register.json" >&2; exit 1; }
+  published=0
+  for i in $(seq 1 40); do
+    if grep -Fxq "$dispatch_id" "$dispatch_log"; then published=1; break; fi
+    sleep .5
+  done
+  # Shutdown payload format may differ from deployment ID; inspect actual
+  # subscription delivery using message count, not guessed message content.
+  if [[ "$published" != 1 ]]; then
+    lines=$(wc -l <"$dispatch_log")
+    [[ "$lines" -ge 6 ]] || { echo "FAIL: no dispatch observed on live subscription" >&2; cat "$dispatch_log" >&2; exit 1; }
+  fi
+  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: dispatched timer still armed" >&2; exit 1; }
+  [[ -f "$work/lifecycle-state/$dispatch_id.dispatched" ]] || { echo "FAIL: durable dispatch marker absent" >&2; exit 1; }
+  echo "PASS: live subscriber received lifecycle shutdown and durable dispatch fence exists"
+  sleep 12
+  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: reconciliation rearmed dispatched timer" >&2; exit 1; }
+  if [[ "$quadlet_mode" == 1 ]]; then systemctl --user restart "$quadlet_service"; else podman restart "$logma" >/dev/null; fi
+  sleep 7
+  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: restart rearmed dispatched timer" >&2; exit 1; }
+  # One Redis subscribe handshake emits three lines; each delivered message
+  # adds another three. Exactly one publication must be observed.
+  lines=$(wc -l <"$dispatch_log")
+  [[ "$lines" -eq 6 ]] || { echo "FAIL: expected one dispatch (6 lines), got $lines" >&2; cat "$dispatch_log" >&2; exit 1; }
+  kill "$subscriber_pid" 2>/dev/null || true
+  wait "$subscriber_pid" 2>/dev/null || true
+  echo "PASS: one lifecycle dispatch, no timer rearm across reconciliation and Logma restart"
+fi
 # Leave a durable registration in the mounted state directory across restart.
 restore_deployment="restore-$"
 restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
