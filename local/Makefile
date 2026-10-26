@@ -67,6 +67,8 @@ help:
 	@echo "make inspect-inventory COMPONENT=fatline (host inventory; read-only)"
 	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start"
+	@echo "make qualify-composition COMPOSITION=logma-image (sync, build and import Logma provider image; not release qualification)"
+	@echo "make qualify-composition COMPOSITION=skymill-provider (pinned Skymill provider integration)"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
 	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
 	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
@@ -196,7 +198,7 @@ qualify-service:
 qualify:
 	@case "$(LEVEL)" in composition) $(MAKE) qualify-composition COMPOSITION="$(COMPOSITION)" GATE="$(GATE)";; process) $(MAKE) qualify-process;; service) $(MAKE) qualify-service;; *) echo "LEVEL must be process, service or composition" >&2; exit 2;; esac
 
-# Smoke-style disposable runtime gate; Nix owns the configuration artifact.
+# Composition registry dispatches Fatline runtime gates and component image workflows.\n# Component image preparation does not imply release qualification.
 qualify-composition:
 	@bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"
 qualify-composition-baseline:
