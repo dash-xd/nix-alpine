@@ -27,12 +27,12 @@ network = os.environ["SKYMILL_TEST_NETWORK"]
 password = os.environ["SKYMILL_TEST_PASSWORD"]
 stream = "fatline-qual:skymill:stream:github.webhooks"
 scope = "fatline-qual"
-port = os.environ.get("SKYMILL_TEST_PORT", "8081")
+port = os.environ.get("SKYMILL_TEST_PORT", "18081")
 # Provider's HTTP executable has no built-in authenticator. Publish on
 # 127.0.0.1 only and never expose its delivery/ACK API externally.
 args = ["podman", "run", "-d", "--name", name, "--network", network,
         "--network-alias", "skymill-provider",
-        "-p", "127.0.0.1::8081",
+        "-p", "127.0.0.1:" + port + ":8081",
         "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "-e", "REDIS_URL=redis://redis-proxy:6379/0",
@@ -52,7 +52,7 @@ args = ["podman", "run", "-d", "--name", name, "--network", network,
 def start():
     run(*args)
     address = run("podman", "port", name, "8081/tcp")
-    check(address.startswith("127.0.0.1:"), "provider port must bind only to loopback: " + address)
+    check(address == "127.0.0.1:" + port, "provider port mapping mismatch: " + repr(address))
     url = "http://" + address
     for _ in range(80):
         try:
