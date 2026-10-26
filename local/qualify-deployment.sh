@@ -21,8 +21,12 @@ for component in logma skymill; do
     grep -Fq 'Volume=%t/fatline/redis:/run/redis' "$file"
   elif grep -Fqx 'Environment=FATLINE_REDIS_TRANSPORT=tcp-proxy' "$file"; then
     ! grep -Fq 'Volume=%t/fatline/redis:/run/redis' "$file"
-    echo "UNQUALIFIED: $component TCP proxy endpoint and service are not wired" >&2
-    exit 1
+    test -s "$work/quadlets/fatline-redis-proxy.container"
+    test -s "$work/config/redis-proxy.conf"
+    grep -Fqx 'NetworkAlias=fatline-redis-proxy' "$work/quadlets/fatline-redis-proxy.container"
+    grep -Fqx 'Environment=FATLINE_REDIS_ENDPOINT=fatline-redis-proxy:6379' "$file"
+    grep -Fq 'proxy_pass unix:/run/redis/redis.sock;' "$work/config/redis-proxy.conf"
+    grep -Fq 'After=fatline-redis-proxy.service' "$file"
   else
     echo "FAIL: $component transport is not declared" >&2
     exit 1
@@ -36,5 +40,5 @@ grep -Fq 'FATLINE_SKYMILL_READINESS_URL' "$work/readiness/skymill"
 ! grep -Fq '0777' "$work/quadlets/fatline-redis.container"
 grep -Fq 'podman unshare install -d -o 65534 -g 65534 -m 0770' "$work/quadlets/fatline-redis.container"
 grep -Fq 'ExecStart=%h/.config/fatline/reconcile' "$work/quadlets/fatline-reconcile.service"
-echo "PASS: generated deployment structure, per-provider transport mounts, fail-closed readiness contracts and probe syntax"
-echo "UNQUALIFIED: runtime socket ownership, provider endpoint semantics, reconciler implementation, image promotion, live deployment"
+echo "PASS: generated deployment structure, per-provider transport contracts, fail-closed readiness and probe syntax"
+echo "UNQUALIFIED: provider-specific client endpoint semantics, TCP proxy runtime, reconciler implementation, image promotion, live deployment"
