@@ -15,7 +15,7 @@ done
 # tracing all Logma runtime paths. The five runtime gates prove the subset
 # they exercise, not every production API path.
 # Redis ACL subcommands are denied unless explicitly granted.
-logma_commands=(ping hello client set get del type time zadd hset hexists zrangebyscore hget publish zrem hdel fcall zscore zrange hgetall hdel exists)
+logma_commands=(ping hello client select set get del type time zadd hset hexists zrangebyscore hget publish zrem hdel fcall zscore zrange hgetall exists)
 logma_rules=()
 for cmd in "${logma_commands[@]}"; do logma_rules+=("+$cmd"); done
 {
