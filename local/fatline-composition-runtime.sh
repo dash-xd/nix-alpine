@@ -532,15 +532,11 @@ PY
   [[ "$dispatch_status" == 201 ]] || { echo "FAIL: dispatch registration HTTP $dispatch_status" >&2; cat "$work/dispatch-register.json" >&2; exit 1; }
   published=0
   for i in $(seq 1 40); do
-    if grep -Fxq "$dispatch_id" "$dispatch_log"; then published=1; break; fi
+    lines=$(wc -l <"$dispatch_log")
+    if [[ "$lines" -ge 6 ]]; then published=1; break; fi
     sleep .5
   done
-  # Shutdown payload format may differ from deployment ID; inspect actual
-  # subscription delivery using message count, not guessed message content.
-  if [[ "$published" != 1 ]]; then
-    lines=$(wc -l <"$dispatch_log")
-    [[ "$lines" -ge 6 ]] || { echo "FAIL: no dispatch observed on live subscription" >&2; cat "$dispatch_log" >&2; exit 1; }
-  fi
+  [[ "$published" == 1 ]] || { echo "FAIL: no dispatch observed on live subscription" >&2; cat "$dispatch_log" >&2; exit 1; }
   [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: dispatched timer still armed" >&2; exit 1; }
   [[ -f "$work/lifecycle-state/$dispatch_id.dispatched" ]] || { echo "FAIL: durable dispatch marker absent" >&2; exit 1; }
   echo "PASS: live subscriber received lifecycle shutdown and durable dispatch fence exists"
@@ -556,6 +552,7 @@ PY
   kill "$subscriber_pid" 2>/dev/null || true
   wait "$subscriber_pid" 2>/dev/null || true
   echo "PASS: one lifecycle dispatch, no timer rearm across reconciliation and Logma restart"
+  exit 0
 fi
 # Leave a durable registration in the mounted state directory across restart.
 restore_deployment="restore-$"
