@@ -36,15 +36,14 @@ start() {
     -v "$work/redis.conf:/etc/redis/redis.conf:ro" \
     -v "$work/users.acl:/etc/redis/users.acl:ro" "$image" >/dev/null
   for i in $(seq 1 60); do
-    [[ -S "$work/socket/redis.sock" ]] && return 0
+    podman unshare test -S "$work/socket/redis.sock" && return 0
     sleep .25
   done
-  echo "DIAGNOSTIC: Redis socket absent from expected host bind mount" >&2
+  echo "DIAGNOSTIC: Redis socket absent from expected namespace-visible bind mount" >&2
   podman inspect "$name" --format '{{json .Mounts}}' >&2 || true
-  podman exec "$name" sh -c 'id; ls -ldn /run/redis; ls -lan /run/redis; test -S /run/redis/redis.sock && echo SOCKET_INSIDE_CONTAINER' >&2 || true
   podman unshare sh -c 'id; ls -ldn "$1"; ls -lan "$1"' sh "$work/socket" >&2 || true
   podman logs "$name" >&2 || true
-  echo "FAIL: Redis socket not visible at expected host path; inspect mount and UID diagnostics above" >&2
+  echo "FAIL: Redis socket not visible through podman unshare; inspect mount and UID diagnostics above" >&2
   return 1
 }
 probe() {
