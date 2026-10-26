@@ -383,7 +383,7 @@ done
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
 if [[ "${COMPOSITION_SKYMILL_PROVIDER_MODE:-0}" == 1 ]]; then
-  provider_image=${COMPOSITION_SKYMILL_IMAGE:-localhost/nix-alpine/skymill:candidate-2026.10.22.1}
+  provider_image=${COMPOSITION_SKYMILL_IMAGE:-localhost/skymill-provider:scoped-qualification}
   podman image exists "$provider_image" || {
     echo "FAIL: Skymill provider image missing: $provider_image (build/import the scoped provider image first)" >&2
     exit 1
