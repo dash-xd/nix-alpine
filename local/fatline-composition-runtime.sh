@@ -54,12 +54,13 @@ cleanup() {
     rm -f "$quadlet_file"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
-  # Remove dependents before their network namespace providers. In particular,
-  # Logma may depend on Nginx, and Nginx may depend on Redis.
+  # Ephemeral --rm CLI containers using --network container:$nginx can
+  # remain as Podman dependencies even after exiting. --depend removes those
+  # children before their scoped network namespace provider.
   local owned
   for owned in "$skymill_provider" "$logma" "$bootstrap" "$nginx" "$redis"; do
     if podman container exists "$owned"; then
-      if ! podman rm -f "$owned" >/dev/null; then
+      if ! podman rm -f --depend "$owned" >/dev/null; then
         echo "FAIL: could not remove qualification container $owned" >&2
         cleanup_failed=1
       fi
@@ -78,7 +79,11 @@ cleanup() {
       cleanup_failed=1
     fi
   fi
-  rm -rf "$work"
+  if (( cleanup_failed )); then
+    echo "FAIL: preserving qualification workspace for diagnosis: $work" >&2
+  else
+    rm -rf "$work"
+  fi
   if (( cleanup_failed )); then
     echo "FAIL: Fatline qualification teardown incomplete" >&2
     return 1
