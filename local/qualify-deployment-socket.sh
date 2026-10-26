@@ -39,8 +39,12 @@ start() {
     [[ -S "$work/socket/redis.sock" ]] && return 0
     sleep .25
   done
+  echo "DIAGNOSTIC: Redis socket absent from expected host bind mount" >&2
+  podman inspect "$name" --format '{{json .Mounts}}' >&2 || true
+  podman exec "$name" sh -c 'id; ls -ldn /run/redis; ls -lan /run/redis; test -S /run/redis/redis.sock && echo SOCKET_INSIDE_CONTAINER' >&2 || true
+  podman unshare sh -c 'id; ls -ldn "$1"; ls -lan "$1"' sh "$work/socket" >&2 || true
   podman logs "$name" >&2 || true
-  echo "FAIL: Redis did not create socket under mapped UID 65534" >&2
+  echo "FAIL: Redis socket not visible at expected host path; inspect mount and UID diagnostics above" >&2
   return 1
 }
 probe() {
