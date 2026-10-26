@@ -382,6 +382,39 @@ done
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
 # Dedicated negative ACL probes against the actual Nginx -> Redis Unix-socket path.
+if [[ "${COMPOSITION_SKYMILL_ACL_MODE:-0}" == 1 ]]; then
+  echo "CHECK: Skymill scoped Redis Streams principal and adjacent tenant isolation"
+  stream='fatline-qual:skymill:stream:github.webhooks'
+  adjacent='other-tenant:skymill:stream:github.webhooks'
+  expect_skymill_noperm() {
+    local description=$1; shift
+    local result
+    result=$(skymill_cli "$@" 2>&1) || true
+    [[ "$result" == *NOPERM* ]] || { echo "FAIL: $description: expected NOPERM, got: $result" >&2; exit 1; }
+  }
+  [[ "$(skymill_cli PING)" == PONG ]]
+  entry=$(skymill_cli XADD "$stream" '*' payload qualified)
+  [[ "$entry" == *-* ]] || { echo "FAIL: scoped stream XADD: $entry" >&2; exit 1; }
+  group=$(skymill_cli XGROUP CREATE "$stream" qualifier 0 2>&1)
+  [[ "$group" == OK ]] || { echo "FAIL: scoped stream group: $group" >&2; exit 1; }
+  entries=$(skymill_cli XREADGROUP GROUP qualifier worker COUNT 1 STREAMS "$stream" '>')
+  [[ "$entries" == *qualified* ]] || { echo "FAIL: scoped XREADGROUP missing message: $entries" >&2; exit 1; }
+  [[ "$(skymill_cli XACK "$stream" qualifier "$entry")" == 1 ]]
+  expect_skymill_noperm "Logma key read" GET logma:acl:allowed
+  expect_skymill_noperm "Logma key write" SET logma:acl:allowed denied
+  expect_skymill_noperm "adjacent stream write" XADD "$adjacent" '*' payload denied
+  expect_skymill_noperm "adjacent stream read" XREAD STREAMS "$adjacent" 0
+  expect_skymill_noperm "Redis administration" CONFIG GET maxmemory
+  expect_skymill_noperm "Redis Function management" FUNCTION FLUSH
+  expect_skymill_noperm "Redis ACL administration" ACL LIST
+  expect_skymill_noperm "Logma channel publish" PUBLISH logma:qualification:dispatch:probe denied
+  expect_skymill_noperm "Logma Function execution" FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0
+  [[ "$(skymill_cli XLEN "$stream" 2>&1)" == *NOPERM* ]] || {
+    echo "FAIL: undeclared XLEN unexpectedly allowed" >&2; exit 1;
+  }
+  echo "PASS: Skymill scoped Streams operations, adjacent tenant, Logma and administration isolation"
+  exit 0
+fi
 if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   echo "CHECK: dedicated Redis principal, key, channel and administration isolation"
   expect_noperm() {
