@@ -52,7 +52,14 @@ cleanup() {
     rm -f "$quadlet_file"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
-  # Remove each owned container independently: a missing name must not mask\n  # removal of the remaining running qualification containers.\n  local owned\n  for owned in "$skymill_provider" "$bootstrap" "$logma" "$nginx" "$redis"; do\n    if podman container exists "$owned"; then\n      podman rm -f "$owned" >/dev/null || echo "WARNING: could not remove $owned" >&2\n    fi\n  done
+  # Remove each owned container independently: a missing name must not mask
+  # removal of the remaining running qualification containers.
+  local owned
+  for owned in "$skymill_provider" "$bootstrap" "$logma" "$nginx" "$redis"; do
+    if podman container exists "$owned"; then
+      podman rm -f "$owned" >/dev/null || echo "WARNING: could not remove $owned" >&2
+    fi
+  done
   podman network rm "$net" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
