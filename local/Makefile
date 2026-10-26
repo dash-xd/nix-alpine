@@ -513,3 +513,13 @@ fatline-inventory:
 	@for f in "$(FATLINE_CONFIG)/reconcile" "$(FATLINE_CONFIG)/readiness/redis" "$(FATLINE_CONFIG)/readiness/logma" "$(FATLINE_CONFIG)/readiness/skymill"; do \
 	  if [[ -x "$$f" ]]; then echo "PRESENT: $$f"; else echo "MISSING: $$f"; fi; \
 	done
+
+# Archive parity between local qualification and disposable CI runners.
+# Archive paths contain only compressed image transports and a verified manifest.
+CI_ARCHIVE_DIR ?= $(CURDIR)/.ci-image-archives
+CI_IMAGES ?= $(COMPOSITION_REDIS_IMAGE) $(COMPOSITION_NGINX_IMAGE) $(COMPOSITION_LOGMA_IMAGE) $(COMPOSITION_SKYMILL_IMAGE)
+.PHONY: ci-archive-export ci-archive-import
+ci-archive-export:
+	@bash ./ci-image-archives.sh export "$(CI_ARCHIVE_DIR)" $(CI_IMAGES)
+ci-archive-import:
+	@bash ./ci-image-archives.sh import "$(CI_ARCHIVE_DIR)" $(CI_IMAGES)
