@@ -20,9 +20,17 @@ cleanup() {
   exit "$code"
 }
 trap cleanup EXIT
-out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths "/workspaces/$checkout/local/fatline#deployment-mixed")
-podman cp "$builder:$out/config/redis.conf" - | tar -x --no-same-owner --no-same-permissions -C "$work"
-podman cp "$builder:$out/config/redis-proxy.conf" - | tar -x --no-same-owner --no-same-permissions -C "$work"
+if [[ -n "${FATLINE_DEPLOYMENT_DIR:-}" ]]; then
+  # CI imports an immutable, previously Nix-built deployment fixture from cache.
+  test -s "$FATLINE_DEPLOYMENT_DIR/config/redis.conf"
+  test -s "$FATLINE_DEPLOYMENT_DIR/config/redis-proxy.conf"
+  cp "$FATLINE_DEPLOYMENT_DIR/config/redis.conf" "$work/redis.conf"
+  cp "$FATLINE_DEPLOYMENT_DIR/config/redis-proxy.conf" "$work/redis-proxy.conf"
+else
+  out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths "/workspaces/$checkout/local/fatline#deployment-mixed")
+  podman cp "$builder:$out/config/redis.conf" - | tar -x --no-same-owner --no-same-permissions -C "$work"
+  podman cp "$builder:$out/config/redis-proxy.conf" - | tar -x --no-same-owner --no-same-permissions -C "$work"
+fi
 chmod 644 "$work/redis.conf" "$work/redis-proxy.conf"
 pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 printf 'user default off\nuser qualify on >%s ~* +ping\n' "$pass" > "$work/users.acl"
