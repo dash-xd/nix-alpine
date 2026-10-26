@@ -64,6 +64,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
 help:
+	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
 	@echo "make inspect-inventory COMPONENT=fatline (host inventory; read-only)"
@@ -452,6 +453,13 @@ release-latest:
 	  version="$$(RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh version "$(COMPONENT)")"; \
 	  echo "Releasing $(COMPONENT) as $$version"; \
 	  $(MAKE) test-release-integration REPO="$(REPO)" COMPONENT="$(COMPONENT)" RELEASE_FLAKE="$(RELEASE_FLAKE)" RELEASE_TARGET="$(RELEASE_TARGET)" RELEASE_VERSION="$$version" SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" RELEASE_STATE="$(RELEASE_STATE)"
+
+# Non-activating validation of the generated Agni deployment artifact.
+.PHONY: qualify-deployment
+qualify-deployment:
+	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
+	@$(MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/local/fatline" TARGET='#deployment' SCOPE="$(SCOPE)"
+	@bash ./qualify-deployment.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)"
 
 # Host-only inspection. FILTER is a POSIX extended regex for image names.
 # Cleanup is opt-in, scoped to disposable fatline-composition-* resources.
