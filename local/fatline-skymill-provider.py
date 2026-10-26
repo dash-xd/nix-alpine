@@ -2,9 +2,7 @@
 """Live Skymill HTTP/Watermill qualification on the Fatline shared Redis proxy.
 
 Invoked by fatline-composition-runtime.sh after Redis and Nginx are ready.
-No host-published service: HTTP is reached via podman exec using a Python
-client inside the provider's network namespace? Instead publish loopback on
-the host only, never the public interface.
+The HTTP test client joins the private Podman network; no host port is published.
 """
 import base64
 import json
@@ -28,12 +26,9 @@ network = os.environ["SKYMILL_TEST_NETWORK"]
 password = os.environ["SKYMILL_TEST_PASSWORD"]
 stream = "fatline-qual:skymill:stream:github.webhooks"
 scope = "fatline-qual"
-port = os.environ.get("SKYMILL_TEST_PORT", "18081")
-# Provider's HTTP executable has no built-in authenticator. Publish on
-# 127.0.0.1 only and never expose its delivery/ACK API externally.
+# Provider HTTP has no authenticator; keep it on the internal Podman network.
 args = ["podman", "run", "-d", "--name", name, "--network", network,
         "--network-alias", "skymill-provider",
-        "-p", "127.0.0.1:" + port + ":8081",
         "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "-e", "REDIS_URL=redis://skymill:" + urllib.parse.quote(password, safe="") + "@redis-proxy:6379/0",
@@ -50,32 +45,39 @@ args = ["podman", "run", "-d", "--name", name, "--network", network,
         "-e", "SKYMILL_CLAIM_INTERVAL=1s",
         "-e", "SKYMILL_MAX_IDLE_TIME=2s",
         image]
+client_image = os.environ.get("SKYMILL_TEST_CLIENT_IMAGE", "alpine:latest")
+check(subprocess.run(["podman", "image", "exists", client_image]).returncode == 0,
+      "missing HTTP test client image: " + client_image)
+
+def http_request(path, payload=None, timeout=20):
+    cmd = ["podman", "run", "--rm", "--network", network,
+           "--entrypoint", "/bin/busybox", client_image,
+           "wget", "-T", str(timeout), "-S", "-O", "-"]
+    if payload is not None:
+        cmd += ["--header", "Content-Type: application/json",
+                "--post-data", json.dumps(payload, separators=(",", ":"))]
+    cmd += ["http://skymill-provider:8081" + path]
+    return subprocess.run(cmd, capture_output=True, text=True)
+
 def start():
     run(*args)
-    url = "http://127.0.0.1:" + port
-    last_error = "no HTTP response"
-    for _ in range(80):
+    last_error = "no response"
+    for _ in range(40):
         state = run("podman", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}}", name)
         if not state.startswith("running"):
             raise RuntimeError("FAIL: provider exited: " + state + "\n" + run("podman", "logs", name))
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url + "/v1/messages", method="GET"), timeout=1) as response:
-                last_error = "unexpected HTTP " + str(response.status)
-        except urllib.error.HTTPError as e:
-            if e.code == 405:
-                return url
-            last_error = "unexpected HTTP " + str(e.code)
-        except (OSError, TimeoutError) as e:
-            last_error = type(e).__name__ + ": " + str(e)
+        result = http_request("/v1/messages", timeout=2)
+        if "405 Method Not Allowed" in result.stderr:
+            return
+        last_error = (result.stderr or result.stdout)[-700:]
         time.sleep(.25)
-    state = run("podman", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}}", name)
-    raise RuntimeError("FAIL: provider HTTP readiness: " + last_error + "; state=" + state + "\n" + run("podman", "logs", name))
+    raise RuntimeError("FAIL: private-network HTTP readiness: " + last_error + "\n" + run("podman", "logs", name))
 
 def post(url, path, payload, timeout=8):
-    request = urllib.request.Request(url + path, json.dumps(payload).encode(),
-              {"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.load(response)
+    result = http_request(path, payload, timeout)
+    if result.returncode:
+        raise RuntimeError("FAIL: HTTP " + path + ": " + (result.stderr or result.stdout)[-1500:])
+    return json.loads(result.stdout)
 
 def stop():
     subprocess.run(["podman", "rm", "-f", name], stdout=subprocess.DEVNULL,
@@ -83,7 +85,8 @@ def stop():
 
 print("CHECK: actual Skymill PublishOnce and Watermill delivery through shared Redis", flush=True)
 try:
-    url = start()
+    start()
+    url = None
     payload = {"idempotency_key": "fatline-provider-qual-1",
                "message_id": "fatline-provider-qual-1",
                "payload_base64": base64.b64encode(b"provider-qualification").decode()}
@@ -102,7 +105,8 @@ try:
     # Simulate process loss before ACK; Redis PEL should retain pending entry.
     stop()
     time.sleep(3)
-    url = start()
+    start()
+    url = None
     recovered = post(url, "/v1/deliveries/receive", {"limit": 1}, timeout=20)
     entries = recovered.get("deliveries", [])
     check(len(entries) == 1 and entries[0]["message"]["id"] == payload["message_id"],
