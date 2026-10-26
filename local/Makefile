@@ -29,6 +29,9 @@ RELEASE_SOURCE_CONTAINER ?= /workspaces/$(notdir $(REPO))
 RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
 RELEASE_IMPORT_RECORD ?= $(RELEASE_STATE)/$(COMPONENT)/$(RELEASE_VERSION).import.json
 PACKAGE ?= ./...
+CGO ?= 0
+GO_VERSION ?= nixpkgs#go
+GO_COMPILER ?= nixpkgs#gcc
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 REPO ?=
@@ -55,7 +58,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-composition-logma-image qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
+.PHONY: test-go test-go-sync qualify-composition-logma-image qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
 help:
 	@echo "make qualify-composition (sync Agni qualification branch, then preflight and disposable runtime gate)"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
@@ -79,6 +82,9 @@ help:
 	@echo "make compose NAME=fatline WITH=component@version... (Nix app; requires ledger mount; currently fails closed)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
+	@echo "make test-go FLAKE=logma-qualification PACKAGE=./internal/lifecycle (Go via Nix, CGO=0 by default)"
+	@echo "make test-go FLAKE=logma-qualification CGO=1 PACKAGE=./... (Nix Go and GCC)"
+	@echo "make test-go-sync REPO=xd-dash/logma BRANCH=branch SYNC_NAME=logma-qualification PACKAGE=./..."
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
 	@echo "make self-update (fast-forward this checkout; no image rebuild)"
 	@echo "make test-workspace-race-latest REPO=... BRANCH=... (race detector via Nix)"
@@ -252,6 +258,21 @@ qualify-composition-quadlet:
 # topology and local image identities. No containers or release tags changed.
 qualify-composition-preflight:
 	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+
+# Run Go tests in any mounted workspace, without host Go or a repository check output.
+# CGO=0 is the lightweight default; CGO=1 supplies GCC from Nix.
+# The Nix shell installs tools into PATH only for this command.
+test-go:
+	@test -f "$(WORKSPACES)/$(FLAKE)/go.mod" || { echo "Go module not found: $(WORKSPACES)/$(FLAKE)/go.mod (set FLAKE=workspace/path)" >&2; exit 2; }
+	@case "$(CGO)" in 0|1) ;; *) echo "CGO must be 0 or 1" >&2; exit 2;; esac
+	@podman exec -w "$(FLAKE_PATH)" -e CGO_ENABLED="$(CGO)" -e GOWORK=off "$(CONTAINER)" \
+		nix shell --no-write-lock-file "$(GO_VERSION)" $(if $(filter 1,$(CGO)),"$(GO_COMPILER)") --command \
+		go test -count=1 $(PACKAGE) $(ARGS)
+
+test-go-sync:
+	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
+	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" SYNC_NAME="$(SYNC_NAME)" WORKSPACES="$(WORKSPACES)"
+	@$(MAKE) test-go FLAKE="$(if $(SYNC_NAME),$(SYNC_NAME),$(notdir $(REPO)))" PACKAGE="$(PACKAGE)" CGO="$(CGO)" ARGS="$(ARGS)" SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
