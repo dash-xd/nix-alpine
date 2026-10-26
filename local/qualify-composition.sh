@@ -18,6 +18,7 @@ run_gate() {
     bootstrap-unit) make qualify-composition-bootstrap-unit ;;
     coordinated-restart) make qualify-composition-coordinated-restart ;;
     live-redis-recovery) make qualify-composition-live-redis-recovery ;;
+    function-reconciliation) make qualify-composition-function-reconciliation ;;
     cold-start) make qualify-composition-cold-start ;;
     *) echo "Unknown Fatline gate: $1" >&2; exit 2 ;;
   esac
