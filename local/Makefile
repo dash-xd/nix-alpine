@@ -46,7 +46,9 @@ QUALIFY_SMOKE ?= $(WORKSPACES)/smoke
 COMPOSITION_REDIS_IMAGE ?= localhost/nix-alpine/redis:qualified-2026.10.23
 COMPOSITION_NGINX_IMAGE ?= localhost/nix-alpine/nginx:qualified-2026.10.23.1
 COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
-COMPOSITION_SKYMILL_IMAGE ?= localhost/nix-alpine/skymill:candidate-2026.10.22.1
+COMPOSITION_SKYMILL_IMAGE ?= localhost/skymill-provider:scoped-qualification
+COMPOSITION_SKYMILL_BRANCH ?= codex/scoped-requirements-qualification
+COMPOSITION_SKYMILL_CHECKOUT ?= skymill-qualification
 COMPOSITION_LOGMA_BRANCH ?= codex/logma-shared-redis-runtime
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
@@ -233,6 +235,9 @@ qualify-composition-logma-image:
 	@podman image inspect "$(COMPOSITION_LOGMA_IMAGE)" --format 'PASS: loaded Logma provider image {{.Id}}'
 
 qualify-composition-skymill-provider:
+	@$(MAKE) sync REPO=xd-dash/skymill BRANCH="$(COMPOSITION_SKYMILL_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_SKYMILL_CHECKOUT)"
+	@$(MAKE) build FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
 	@COMPOSITION_SKYMILL_PROVIDER_MODE=1 COMPOSITION_SKYMILL_IMAGE="$(COMPOSITION_SKYMILL_IMAGE)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
