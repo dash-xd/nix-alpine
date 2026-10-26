@@ -138,10 +138,18 @@ sync-component:
 # Run both component-owned Nix gates after fast-forwarding the workspace.
 # Fail on the first unsuccessful gate; no ledger records or image tags touched.
 qualify-component:
-	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
-	@$(MAKE) sync-component REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@$(MAKE) run FLAKE="$(notdir $(REPO))" TARGET='#qualify' SCOPE="$(SCOPE)"
-	@$(MAKE) run FLAKE="$(notdir $(REPO))" TARGET='#qualify-integration' SCOPE="$(SCOPE)"
+	@if [[ -n "$(REPO)" ]]; then \
+	  $(MAKE) sync-component REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)" && \
+	  $(MAKE) run FLAKE="$(notdir $(REPO))" TARGET='#qualify' SCOPE="$(SCOPE)" && \
+	  $(MAKE) run FLAKE="$(notdir $(REPO))" TARGET='#qualify-integration' SCOPE="$(SCOPE)"; \
+	else \
+	  case "$(COMPONENT):$(GATE)" in \
+	    redis:socket) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
+	    redis:all) $(MAKE) qualify-deployment-socket SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
+	    fatline:deployment) $(MAKE) qualify-deployment SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)";; \
+	    *) echo "Unsupported component gate: COMPONENT=$(COMPONENT) GATE=$(GATE)" >&2; exit 2;; \
+	  esac; \
+	fi
 
 # Reuse source synchronization and Nix artifact loading for Fatline's
 # infrastructure images. No registry, service installation, or activation.
