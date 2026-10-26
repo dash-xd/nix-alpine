@@ -4,8 +4,9 @@ set -Eeuo pipefail
 builder=$1 checkout=$2
 out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths "/workspaces/$checkout/local/fatline#deployment")
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+trap 'chmod -R u+rwX "$work" 2>/dev/null || true; rm -rf -- "$work"' EXIT
 podman cp "$builder:$out/." - | tar -x --no-same-owner --no-same-permissions -C "$work/"
+chmod -R u+rwX "$work"
 for component in redis logma skymill; do
   test -s "$work/quadlets/fatline-$component.container"
   test -s "$work/readiness/$component"
