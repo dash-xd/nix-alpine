@@ -48,11 +48,11 @@ start_redis() {
 unix_cli() {
   podman run --rm --network none --user 65534:65534 --entrypoint redis-cli \
     -v "$work/socket:/run/redis" "$redis_image" \
-    -s /run/redis/redis.sock --user qualify -a "$pass" "$@" 2>&1
+    -s /run/redis/redis.sock --user qualify "$@"
 }
 tcp_cli() {
   podman run --rm --network "$net" --entrypoint redis-cli "$redis_image" \
-    -h "$proxy" -p 6379 --user qualify -a "$pass" "$@" 2>&1
+    -h "$proxy" -p 6379 --user qualify "$@"
 }
 assert_access() {
   local mode=$1
