@@ -1,0 +1,34 @@
+name: Blacksmith systemd capability qualification
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [fatline-systemd-capability]
+permissions:
+  contents: read
+jobs:
+  systemd-capability:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - name: Probe systemd, user manager and rootless Podman
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "Kernel: $(uname -a)"
+          echo "PID1: $(ps -p 1 -o comm=)"
+          test "$(ps -p 1 -o comm=)" = systemd || { echo "FAIL: PID1 is not systemd"; exit 1; }
+          systemctl is-system-running || test "$(systemctl is-system-running)" = degraded
+          id
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset}"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
+          command -v loginctl
+          loginctl user-status "$(id -un)" || true
+          test -n "${XDG_RUNTIME_DIR:-}" || { echo "FAIL: no user runtime directory"; exit 1; }
+          test -S "$XDG_RUNTIME_DIR/bus" || { echo "FAIL: user D-Bus socket absent"; exit 1; }
+          systemctl --user show-environment
+          command -v podman || { echo "FAIL: Podman unavailable"; exit 1; }
+          podman info --format '{{.Host.Security.Rootless}}' | grep -Fx true
+          podman info --format '{{.Host.CgroupVersion}}'
+          command -v quadlet || true
+          test -x /usr/libexec/podman/quadlet || test -x /usr/lib/podman/quadlet || { echo "FAIL: Quadlet generator missing"; exit 1; }
+          echo "PASS: Blacksmith systemd user manager and rootless Podman capability"
