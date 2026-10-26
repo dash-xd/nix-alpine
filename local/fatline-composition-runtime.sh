@@ -376,6 +376,40 @@ done
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+# Dedicated negative ACL probes against the actual Nginx -> Redis Unix-socket path.
+if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
+  echo "CHECK: dedicated Redis principal, key, channel and administration isolation"
+  expect_noperm() {
+    local description=$1; shift
+    local result
+    result=$(redis_cli "$@" 2>&1) || true
+    [[ "$result" == *NOPERM* ]] || { echo "FAIL: $description: expected NOPERM, got: $result" >&2; exit 1; }
+  }
+  expect_subscriber_noperm() {
+    local description=$1; shift
+    local result
+    result=$(subscriber_cli "$@" 2>&1) || true
+    [[ "$result" == *NOPERM* ]] || { echo "FAIL: $description: expected NOPERM, got: $result" >&2; exit 1; }
+  }
+  [[ "$(redis_cli SET logma:acl:allowed value)" == OK ]]
+  [[ "$(redis_cli GET logma:acl:allowed)" == value ]]
+  expect_noperm "cross-tenant write" SET foreign:tenant:secret denied
+  expect_noperm "cross-tenant read" GET foreign:tenant:secret
+  expect_noperm "cross-tenant delete" DEL foreign:tenant:secret
+  expect_noperm "cross-tenant scan" KEYS 'foreign:*'
+  expect_noperm "administration" CONFIG GET maxmemory
+  expect_noperm "ACL modification" ACL SETUSER intruder on nopass +@all
+  expect_noperm "function replacement" FUNCTION FLUSH
+  expect_noperm "function load" FUNCTION LOAD '#!lua name=intruder'
+  expect_noperm "foreign channel publish" PUBLISH foreign:shutdown test
+  expect_subscriber_noperm "subscriber cannot read keys" GET logma:acl:allowed
+  expect_subscriber_noperm "subscriber cannot publish" PUBLISH logma:qualification:dispatch:probe test
+  expect_subscriber_noperm "subscriber cannot subscribe to foreign channel" SUBSCRIBE foreign:shutdown
+  [[ "$(redis_cli GET logma:acl:allowed)" == value ]] || { echo "FAIL: allowed key changed" >&2; exit 1; }
+  [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "FAIL: bootstrap principal still authenticates" >&2; exit 1; }
+  echo "PASS: dedicated Redis ACL key, channel, administration, Function and bootstrap revocation probes"
+  exit 0
+fi
 if [[ "$nginx_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
   echo "CHECK: systemd-user Nginx Quadlet restart"
   systemctl --user restart "$nginx_quadlet_service"
