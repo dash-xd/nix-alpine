@@ -17,6 +17,22 @@ Default scope: `dev`. Other scopes: `make bootstrap SCOPE=other` and `make unins
 
 No Smoke, Go daemon, host systemd bus mount, KVM passthrough or host deployment activation is implemented. The actual ThinkPad bootstrap and uninstall lifecycle still needs qualification.
 
+## Qualification logs
+
+Set `LOG=1` on a qualification Make target to stream output to the terminal and a
+timestamped log file. The wrapper records the command's exit code and returns it
+to Make; a failed gate remains a failed Make command.
+
+```bash
+make qualify-composition COMPOSITION=fatline GATE=all LOG=1
+make qualify-composition-skymill-provider QUADLET=1 LOG=1
+```
+
+Logs default to `~/.local/state/nix-alpine/qualification-logs`. Override
+`LOG_DIR` to choose another directory or `LOG_NAME` to set the filename
+prefix. The Skymill Quadlet mode runs Skymill's disposable provider against
+Logma, Redis, and Nginx started as systemd-user Quadlets.
+
 ## Local release workflow
 
 The host only needs Make, Bash, jq, and rootless Podman. Nix executes in the

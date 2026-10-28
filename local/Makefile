@@ -55,6 +55,11 @@ COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
 COMPOSITION ?= fatline
 GATE ?= all
+LOG ?= 0
+LOG_DIR ?= $(HOME)/.local/state/nix-alpine/qualification-logs
+LOG_NAME ?= $(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$(firstword $(MAKECMDGOALS)))
+QUADLET ?= 0
+QUADLET_PROVIDER_ENV = $(if $(filter 1,$(QUADLET)),COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1)
 QUALIFY_AGNI ?= $(WORKSPACES)/agni
 FATLINE_FLAKE ?= agni/local/fatline
 # Set FORCE=1 to discard tracked local changes before refreshing.
@@ -69,7 +74,8 @@ help:
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
 	@echo "make inspect-inventory COMPONENT=fatline (host inventory; read-only)"
 	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
-	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start"
+	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start LOG=1 (timestamped log + exit code)"
+	@echo "make qualify-composition-skymill-provider QUADLET=1 LOG=1 (Skymill against systemd Quadlets; timestamped log)"
 	@echo "make qualify-composition COMPOSITION=logma-image (sync, build and import Logma provider image; not release qualification)"
 	@echo "make qualify-composition COMPOSITION=skymill-provider (pinned Skymill provider integration)"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
@@ -221,7 +227,13 @@ qualify:
 
 # Composition registry dispatches Fatline runtime gates and component image workflows.\n# Component image preparation does not imply release qualification.
 qualify-composition:
-	@bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"
+	@if [[ "$(LOG)" != "0" && "$(LOG)" != "1" ]]; then \
+	  echo "LOG must be 0 or 1" >&2; exit 2; \
+	elif [[ "$(LOG)" == "1" ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-composition LOG=0; \
+	else \
+	  bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"; \
+	fi
 qualify-composition-baseline:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
@@ -261,13 +273,24 @@ qualify-composition-logma-image:
 	@podman image inspect "$(COMPOSITION_LOGMA_IMAGE)" --format 'PASS: loaded Logma provider image {{.Id}}'
 
 qualify-composition-skymill-provider:
+	@if [[ "$(LOG)" != "0" && "$(LOG)" != "1" ]]; then \
+	  echo "LOG must be 0 or 1" >&2; exit 2; \
+	elif [[ "$(LOG)" == "1" ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-composition-skymill-provider LOG=0; \
+	else \
+	  $(MAKE) --no-print-directory __qualify-composition-skymill-provider; \
+	fi
+
+.PHONY: __qualify-composition-skymill-provider
+__qualify-composition-skymill-provider:
+	@if [[ "$(QUADLET)" != "0" && "$(QUADLET)" != "1" ]]; then echo "QUADLET must be 0 or 1" >&2; exit 2; fi
 	@$(MAKE) sync REPO=xd-dash/skymill BRANCH="$(COMPOSITION_SKYMILL_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_SKYMILL_CHECKOUT)"
 	@git -C "$(WORKSPACES)/$(COMPOSITION_SKYMILL_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_SKYMILL_REV)" >/dev/null || { echo "FAIL: Skymill source does not match pinned revision $(COMPOSITION_SKYMILL_REV)" >&2; exit 1; }
 	@$(MAKE) build FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(COMPOSITION_SKYMILL_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
-	@COMPOSITION_SKYMILL_PROVIDER_MODE=1 COMPOSITION_SKYMILL_IMAGE="$(COMPOSITION_SKYMILL_IMAGE)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@COMPOSITION_SKYMILL_PROVIDER_MODE=1 $(QUADLET_PROVIDER_ENV) COMPOSITION_SKYMILL_IMAGE="$(COMPOSITION_SKYMILL_IMAGE)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 qualify-composition-skymill-acl:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
