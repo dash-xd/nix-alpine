@@ -42,7 +42,7 @@ run_gate() {
 }
 if [[ $gate == all ]]; then
   echo "CHECK: all registered Fatline composition gates"
-  for name in baseline acl-isolation skymill-acl cold-start timer-recovery lifecycle-dispatch skymill-provider crash-window; do
+  for name in baseline production-acl cold-start timer-recovery lifecycle-dispatch skymill-provider strict-readiness; do
     echo "CHECK: Fatline composition gate $name"
     run_gate "$name"
     echo "PASS: Fatline composition gate $name"
