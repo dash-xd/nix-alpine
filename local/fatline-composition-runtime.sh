@@ -534,6 +534,7 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   }
   [[ "$(redis_cli HSET "$fatline_scope:logma:pubsub:channel:acl-allowed" name value)" == 1 ]]
   [[ "$(redis_cli HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name)" == value ]]
+  [[ "$(redis_cli SET "$fatline_scope:logma:acl:allowed" value)" == OK ]]
   expect_noperm "cross-tenant write" SET foreign:tenant:secret denied
   expect_noperm "cross-tenant read" GET foreign:tenant:secret
   expect_noperm "cross-tenant delete" DEL foreign:tenant:secret
