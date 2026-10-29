@@ -247,7 +247,7 @@ qualify-composition:
 	@if [[ "$(LOG)" != "0" && "$(LOG)" != "1" ]]; then \
 	  echo "LOG must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(LOG)" == "1" ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-composition LOG=0; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-composition SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)" LOG=0; \
 	else \
 	  bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"; \
 	fi
