@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 SCOPE ?= dev
-CONTAINER := nix-alpine-$(SCOPE)
+CONTAINER ?= nix-alpine-$(SCOPE)
 SERVICE := $(CONTAINER).service
 VOLUME := $(CONTAINER)-store
 IMAGE ?= localhost/nix.xd:latest
