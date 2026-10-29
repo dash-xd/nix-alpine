@@ -730,7 +730,7 @@ PY
     echo "DIAG: Redis timer score for $dispatch_key" >&2
     redis_cli --raw ZRANGEBYSCORE "$dispatch_key" -inf +inf WITHSCORES >&2 || true
     echo "DIAG: explicit lifecycle tick response" >&2
-    curl -sS --max-time 10 -o "$work/dispatch-tick-diagnostic.json" -w 'HTTP %{http_code}\\n' \
+    curl -sS --max-time 10 -o "$work/dispatch-tick-diagnostic.json" -w 'HTTP %{http_code}\n' \
       -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick" >&2 || true
     cat "$work/dispatch-tick-diagnostic.json" >&2 || true
     sleep 1
