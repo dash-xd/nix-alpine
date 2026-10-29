@@ -607,6 +607,9 @@ NoNewPrivileges=true
 Volume=$work/lifecycle-state:/var/lib/logma/lifecycle
 Environment=LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle
 Environment=FATLINE_SCOPE=$fatline_scope
+Environment=LOGMA_BIND_ADDR=0.0.0.0
+Environment=REDIS_NETWORK=tcp
+Environment=REDIS_URI=redis-proxy:6379
 Environment=REDIS_USERNAME=logma
 Environment=REDISCLI_AUTH=$redis_pass
 Environment=API_KEY=$api_pass
@@ -627,6 +630,9 @@ else
     -v "$work/lifecycle-state:/var/lib/logma/lifecycle" \
     -e LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle \
     -e FATLINE_SCOPE="$fatline_scope" \
+    -e LOGMA_BIND_ADDR=0.0.0.0 \
+    -e REDIS_NETWORK=tcp \
+    -e REDIS_URI=redis-proxy:6379 \
     -e REDIS_USERNAME=logma -e REDISCLI_AUTH="$redis_pass" -e API_KEY="$api_pass" \
     -p 127.0.0.1::8080 "$logma_image" >/dev/null
 fi
