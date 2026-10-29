@@ -723,7 +723,23 @@ PY
     if [[ "$lines" -ge 6 ]]; then published=1; break; fi
     sleep .5
   done
-  [[ "$published" == 1 ]] || { echo "FAIL: no dispatch observed on live subscription" >&2; cat "$dispatch_log" >&2; exit 1; }
+  if [[ "$published" != 1 ]]; then
+    echo "FAIL: no dispatch observed on live subscription" >&2
+    echo "DIAG: durable registration and calculated deadline" >&2
+    cat "$work/dispatch-register.json" "$work/dispatch-request.json" >&2 || true
+    echo "DIAG: Redis timer score for $dispatch_key" >&2
+    redis_cli --raw ZRANGEBYSCORE "$dispatch_key" -inf +inf WITHSCORES >&2 || true
+    echo "DIAG: explicit lifecycle tick response" >&2
+    curl -sS --max-time 10 -o "$work/dispatch-tick-diagnostic.json" -w 'HTTP %{http_code}\\n' \
+      -X POST -H "X-API-Key: $api_pass" "$lifecycle_url/tick" >&2 || true
+    cat "$work/dispatch-tick-diagnostic.json" >&2 || true
+    sleep 1
+    echo "DIAG: subscriber output after explicit tick" >&2
+    cat "$dispatch_log" >&2 || true
+    echo "DIAG: Logma runtime logs" >&2
+    podman logs --tail 120 "$logma" >&2 || true
+    exit 1
+  fi
   [[ -z "$(redis_sorted_set_score "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: dispatched timer still armed" >&2; exit 1; }
   [[ -f "$work/lifecycle-state/$dispatch_id.dispatched" ]] || { echo "FAIL: durable dispatch marker absent" >&2; exit 1; }
   echo "PASS: live subscriber received lifecycle shutdown and durable dispatch fence exists"
