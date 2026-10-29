@@ -440,8 +440,8 @@ for i in $(seq 1 60); do
   sleep .25
 done
 [[ "$(redis_cli PING)" == PONG ]] || { podman logs "$nginx"; exit 1; }
-[[ "$(redis_cli SET "$fatline_scope:logma:qualification" ok)" == OK ]]
-[[ "$(redis_cli GET "$fatline_scope:logma:qualification")" == ok ]]
+[[ "$(redis_cli HSET "$fatline_scope:logma:pubsub:channel:qualification" name qualification)" == 1 ]]
+[[ "$(redis_cli HGET "$fatline_scope:logma:pubsub:channel:qualification" name)" == qualification ]]
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
@@ -530,8 +530,8 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
     result=$(subscriber_cli "$@" 2>&1) || true
     [[ "$result" == *NOPERM* ]] || { echo "FAIL: $description: expected NOPERM, got: $result" >&2; exit 1; }
   }
-  [[ "$(redis_cli SET "$fatline_scope:logma:acl:allowed" value)" == OK ]]
-  [[ "$(redis_cli GET "$fatline_scope:logma:acl:allowed")" == value ]]
+  [[ "$(redis_cli HSET "$fatline_scope:logma:pubsub:channel:acl-allowed" name value)" == 1 ]]
+  [[ "$(redis_cli HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name)" == value ]]
   expect_noperm "cross-tenant write" SET foreign:tenant:secret denied
   expect_noperm "cross-tenant read" GET foreign:tenant:secret
   expect_noperm "cross-tenant delete" DEL foreign:tenant:secret
@@ -541,7 +541,7 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   expect_noperm "function replacement" FUNCTION FLUSH
   expect_noperm "function load" FUNCTION LOAD '#!lua name=intruder'
   expect_noperm "foreign channel publish" PUBLISH foreign:shutdown test
-  expect_subscriber_noperm "subscriber cannot read keys" GET "$fatline_scope:logma:acl:allowed"
+  expect_subscriber_noperm "subscriber cannot read keys" HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name
   expect_subscriber_noperm "subscriber cannot publish" PUBLISH "$fatline_scope:logma:qualification:dispatch:probe" test
   expect_subscriber_noperm "subscriber cannot subscribe to foreign channel" SUBSCRIBE foreign:shutdown
   [[ "$(redis_cli GET "$fatline_scope:logma:acl:allowed")" == value ]] || { echo "FAIL: allowed key changed" >&2; exit 1; }
