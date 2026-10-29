@@ -6,6 +6,8 @@ SERVICE := $(CONTAINER).service
 VOLUME := $(CONTAINER)-store
 IMAGE ?= localhost/nix.xd:latest
 WORKSPACES ?= $(HOME)/workspace/nix
+COMPOSITION_AGNI_SOURCE ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)
+export COMPOSITION_AGNI_SOURCE
 FLAKE ?= .
 TARGET ?=
 # Image archive is resolved from the selected flake output, never a hard-coded store path.
@@ -36,7 +38,8 @@ REPO ?=
 BRANCH ?= main
 FATLINE_REPO ?= dash-xd/agni
 FATLINE_BRANCH ?= codex/redis-isolated-qualification-artifact
-COMPOSITION_AGNI_BRANCH ?= codex/fatline-composition-qualification-config
+COMPOSITION_AGNI_BRANCH ?= codex/fatline-scope-contract
+COMPOSITION_AGNI_REV ?= 227605629679c8048115f5eb716772c1228c07f6
 COMPOSITION_AGNI_CHECKOUT ?= agni-qualification
 SYNC_NAME ?=
 FATLINE_AGNI ?= $(WORKSPACES)/agni
@@ -50,9 +53,12 @@ COMPOSITION_SKYMILL_IMAGE ?= localhost/skymill-provider:scoped-qualification
 COMPOSITION_SKYMILL_BRANCH ?= codex/scoped-requirements-qualification
 COMPOSITION_SKYMILL_REV ?= 907346ecd74a4d39830347b2ea01dc2b1c6b8969
 COMPOSITION_SKYMILL_CHECKOUT ?= .qualification-skymill-source
-COMPOSITION_LOGMA_BRANCH ?= codex/logma-shared-redis-runtime
+COMPOSITION_LOGMA_BRANCH ?= codex/fatline-scoped-readiness
+COMPOSITION_LOGMA_REV ?= a651ec66d482f935d96d37375d3f84346a8a854b
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
+COMPOSITION_STRICT_READINESS_MODE ?= 0
+COMPOSITION_PRODUCTION_ACL_MODE ?= 0
 COMPOSITION ?= fatline
 GATE ?= all
 LOG ?= 0
@@ -67,7 +73,7 @@ FORCE ?= 0
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash
+.PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
@@ -268,6 +274,7 @@ qualify-composition-function-reconciliation:
 # Never reuse a stale candidate tag as evidence of newly committed code.
 qualify-composition-logma-image:
 	@$(MAKE) sync REPO=xd-dash/logma BRANCH="$(COMPOSITION_LOGMA_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_LOGMA_CHECKOUT)"
+	@git -C "$(WORKSPACES)/$(COMPOSITION_LOGMA_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_LOGMA_REV)" >/dev/null || { echo "FAIL: Logma source does not match pinned revision $(COMPOSITION_LOGMA_REV)" >&2; exit 1; }
 	@$(MAKE) build FLAKE="$(COMPOSITION_LOGMA_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(COMPOSITION_LOGMA_CHECKOUT)" TARGET='#provider-image' SCOPE="$(SCOPE)"
 	@podman image inspect "$(COMPOSITION_LOGMA_IMAGE)" --format 'PASS: loaded Logma provider image {{.Id}}'
@@ -295,12 +302,16 @@ __qualify-composition-skymill-provider:
 qualify-composition-skymill-acl:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
-	@COMPOSITION_SKYMILL_ACL_MODE=1 COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@COMPOSITION_AGNI_RECONCILE_MODE="$(COMPOSITION_PRODUCTION_ACL_MODE)" COMPOSITION_SKYMILL_ACL_MODE=1 $(QUADLET_PROVIDER_ENV) COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+
+qualify-composition-production-acl:
+	@$(MAKE) qualify-composition-acl-isolation COMPOSITION_PRODUCTION_ACL_MODE=1 QUADLET=1
+	@$(MAKE) qualify-composition-skymill-acl COMPOSITION_PRODUCTION_ACL_MODE=1 QUADLET=1
 
 qualify-composition-acl-isolation:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
-	@COMPOSITION_ACL_ISOLATION_MODE=1 COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@COMPOSITION_AGNI_RECONCILE_MODE="$(COMPOSITION_PRODUCTION_ACL_MODE)" COMPOSITION_ACL_ISOLATION_MODE=1 $(QUADLET_PROVIDER_ENV) COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 qualify-composition-lifecycle-dispatch:
 	@$(MAKE) qualify-composition-logma-image
@@ -315,10 +326,13 @@ qualify-composition-lifecycle-timer-recovery:
 qualify-composition-crash-window:
 	@$(MAKE) qualify-composition-lifecycle-crash COMPOSITION_CRASH_WINDOW_MODE=1
 
+qualify-composition-strict-readiness:
+	@$(MAKE) qualify-composition-lifecycle-crash COMPOSITION_CRASH_WINDOW_MODE=1 COMPOSITION_STRICT_READINESS_MODE=1
+
 qualify-composition-lifecycle-crash:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
-	@COMPOSITION_CRASH_WINDOW_MODE="$(COMPOSITION_CRASH_WINDOW_MODE)" COMPOSITION_TIMER_STATE_MODE="$(COMPOSITION_TIMER_STATE_MODE)" COMPOSITION_LIFECYCLE_CRASH_MODE=1 COMPOSITION_FUNCTION_RECONCILE_MODE=1 COMPOSITION_REDIS_CRASH_BASELINE_MODE=1 COMPOSITION_COORDINATED_RESTART_MODE=1 COMPOSITION_BOOTSTRAP_UNIT_MODE=1 COMPOSITION_COLD_START_MODE=1 COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1 COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
+	@COMPOSITION_CRASH_WINDOW_MODE="$(COMPOSITION_CRASH_WINDOW_MODE)" COMPOSITION_TIMER_STATE_MODE="$(COMPOSITION_TIMER_STATE_MODE)" COMPOSITION_STRICT_READINESS_MODE="$(COMPOSITION_STRICT_READINESS_MODE)" COMPOSITION_LIFECYCLE_CRASH_MODE=1 COMPOSITION_FUNCTION_RECONCILE_MODE=1 COMPOSITION_REDIS_CRASH_BASELINE_MODE=1 COMPOSITION_COORDINATED_RESTART_MODE=1 COMPOSITION_BOOTSTRAP_UNIT_MODE=1 COMPOSITION_COLD_START_MODE=1 COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1 COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 qualify-composition-cold-start:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
@@ -343,6 +357,7 @@ qualify-composition-quadlet:
 # Preflight only: Nix-Alpine builds the Agni composition, host verifies its
 # topology and local image identities. No containers or release tags changed.
 qualify-composition-preflight:
+	@git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "FAIL: Agni source does not match pinned revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }
 	@COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-preflight.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
 # Run Go tests in any mounted workspace, without host Go or a repository check output.

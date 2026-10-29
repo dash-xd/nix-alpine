@@ -24,8 +24,8 @@ name = os.environ["SKYMILL_TEST_NAME"]
 image = os.environ["SKYMILL_TEST_IMAGE"]
 network = os.environ["SKYMILL_TEST_NETWORK"]
 password = os.environ["SKYMILL_TEST_PASSWORD"]
-stream = "fatline-qual:skymill:stream:github.webhooks"
-scope = "fatline-qual"
+stream = os.environ["SKYMILL_TEST_STREAM"]
+scope = os.environ["SKYMILL_TEST_SCOPE"]
 # Provider HTTP has no authenticator; keep it on the internal Podman network.
 args = ["podman", "run", "-d", "--name", name, "--network", network,
         "--network-alias", "skymill-provider",

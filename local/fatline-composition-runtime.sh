@@ -17,6 +17,7 @@ redis_quadlet_mode=${COMPOSITION_REDIS_QUADLET_MODE:-0}
 nginx_quadlet_mode=${COMPOSITION_NGINX_QUADLET_MODE:-0}
 cold_start_mode=${COMPOSITION_COLD_START_MODE:-0}
 bootstrap_unit_mode=${COMPOSITION_BOOTSTRAP_UNIT_MODE:-0}
+agni_reconcile_mode=${COMPOSITION_AGNI_RECONCILE_MODE:-0}
 bootstrap_unit="$scope-bootstrap.service"
 bootstrap_unit_file="$HOME/.config/systemd/user/$bootstrap_unit"
 nginx_quadlet_file="$HOME/.config/containers/systemd/$scope-nginx.container"
@@ -119,6 +120,18 @@ mkdir -m 777 "$socket"
 out=$(podman exec "$builder" nix build --no-write-lock-file --no-link --print-out-paths /workspaces/${COMPOSITION_AGNI_CHECKOUT:-agni-qualification}/local/fatline#composition-qualification)
 podman cp "$builder:$out/config/redis.conf" "$work/redis.conf"
 podman cp "$builder:$out/config/nginx.conf" "$work/nginx.conf"
+podman cp "$builder:$out/metadata/components.json" "$work/components.json"
+readarray -t fatline_config < <(python3 - "$work/components.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    config = json.load(source)
+print(config["scope"])
+print(config["skymillStream"])
+PY
+)
+[[ ${#fatline_config[@]} == 2 ]]
+fatline_scope=${fatline_config[0]}
+skymill_stream=${fatline_config[1]}
 chmod 644 "$work/redis.conf" "$work/nginx.conf"
 redis_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
@@ -127,7 +140,7 @@ api_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 bootstrap_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 subscriber_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 skymill_pass=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-bash ./fatline-acl-fixture.sh "$work/users.acl" "$redis_pass" "$subscriber_pass" "$bootstrap_pass" "$skymill_pass"
+bash ./fatline-acl-fixture.sh "$work/users.acl" "$redis_pass" "$subscriber_pass" "$bootstrap_pass" "$skymill_pass" "$fatline_scope" "$skymill_stream"
 chmod 644 "$work/users.acl" # Rootless Redis UID 65534 must read this bind mount.
 podman network create --internal "$net" >/dev/null
 # Same unprivileged UID owns the socket and connects through Nginx.
@@ -257,6 +270,14 @@ if [[ "$function_ready" != true ]]; then
   podman rm -f "$bootstrap" >/dev/null 2>&1 || true
   exit 1
 fi
+for probe in "CONFIG GET maxmemory" "SET $fatline_scope:bootstrap:probe denied" "PUBLISH $fatline_scope:bootstrap:probe denied" "FUNCTION FLUSH"; do
+  result=$(bootstrap_cli $probe 2>&1) || true
+  [[ "$result" == *NOPERM* ]] || {
+    echo "FAIL: bootstrap identity unexpectedly has authority for '$probe': $result" >&2
+    exit 1
+  }
+done
+echo "PASS: bootstrap identity can inspect/load Functions and revoke itself, with no key, channel, or Redis administration authority"
 podman rm -f "$bootstrap" >/dev/null
 [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]] || { echo "Failed to revoke bootstrap identity" >&2; exit 1; }
 [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "Bootstrap identity still authenticates" >&2; exit 1; }
@@ -396,7 +417,15 @@ EOF
   echo "PASS: systemd-user bootstrap oneshot completed"
   echo "CHECK: bootstrap prerequisite remains successful before Logma startup"
 else
-  bootstrap_functions
+  if [[ "$agni_reconcile_mode" == 1 ]]; then
+    [[ "$quadlet_mode" == 1 && "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]] || {
+      echo "Agni reconciler qualification requires the real Redis/Nginx/Logma Quadlet topology" >&2; exit 1;
+    }
+    bash "$COMPOSITION_AGNI_SOURCE/local/fatline/scripts/reconcile-redis.sh" \
+      "$logma_image" "$redis_image" "$fatline_scope" "$work/users.acl.credentials" "$socket"
+  else
+    bootstrap_functions
+  fi
 fi
 if [[ "$cold_start_mode" == 1 ]]; then
   [[ "$(redis_cli FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0 2>&1)" != *"Function not found"* ]] || {
@@ -411,11 +440,30 @@ for i in $(seq 1 60); do
   sleep .25
 done
 [[ "$(redis_cli PING)" == PONG ]] || { podman logs "$nginx"; exit 1; }
-[[ "$(redis_cli SET logma:qualification ok)" == OK ]]
-[[ "$(redis_cli GET logma:qualification)" == ok ]]
+[[ "$(redis_cli SET "$fatline_scope:logma:qualification" ok)" == OK ]]
+[[ "$(redis_cli GET "$fatline_scope:logma:qualification")" == ok ]]
 [[ "$(redis_cli SET foreign:denied value)" == *NOPERM* ]]
 [[ "$(redis_cli ACL LIST)" == *NOPERM* ]]
 echo "PASS: authenticated TCP -> Nginx -> Unix Redis, key isolation, admin denial"
+if [[ "$agni_reconcile_mode" == 1 ]]; then
+  echo "CHECK: Redis Quadlet restart reloads the pinned ACL and Agni reconciliation revokes bootstrap"
+  systemctl --user restart "$redis_quadlet_service"
+  [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
+  for i in $(seq 1 60); do
+    [[ "$(redis_cli PING 2>/dev/null)" == PONG ]] && break
+    sleep .25
+  done
+  [[ "$(redis_cli PING)" == PONG ]]
+  [[ "$(bootstrap_cli PING 2>&1)" == PONG ]] || {
+    echo "FAIL: bootstrap identity did not load from ACL after Redis restart" >&2; exit 1;
+  }
+  bash "$COMPOSITION_AGNI_SOURCE/local/fatline/scripts/reconcile-redis.sh" \
+    "$logma_image" "$redis_image" "$fatline_scope" "$work/users.acl.credentials" "$socket"
+  [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || {
+    echo "FAIL: Agni reconciler did not revoke bootstrap after restart" >&2; exit 1;
+  }
+  echo "PASS: Redis restart reloaded the scoped ACL; Agni restored Functions and revoked bootstrap"
+fi
 if [[ "${COMPOSITION_SKYMILL_PROVIDER_MODE:-0}" == 1 ]]; then
   provider_image=${COMPOSITION_SKYMILL_IMAGE:-localhost/skymill-provider:scoped-qualification}
   podman image exists "$provider_image" || {
@@ -426,6 +474,8 @@ if [[ "${COMPOSITION_SKYMILL_PROVIDER_MODE:-0}" == 1 ]]; then
   SKYMILL_TEST_IMAGE="$provider_image" \
   SKYMILL_TEST_NETWORK="$net" \
   SKYMILL_TEST_PASSWORD="$skymill_pass" \
+  SKYMILL_TEST_SCOPE="$fatline_scope" \
+  SKYMILL_TEST_STREAM="$skymill_stream" \
   python3 ./fatline-skymill-provider.py
   echo "PASS: Fatline composition Skymill provider"
   exit 0
@@ -433,8 +483,9 @@ fi
 # Dedicated negative ACL probes against the actual Nginx -> Redis Unix-socket path.
 if [[ "${COMPOSITION_SKYMILL_ACL_MODE:-0}" == 1 ]]; then
   echo "CHECK: Skymill scoped Redis Streams principal and adjacent tenant isolation"
-  stream='fatline-qual:skymill:stream:github.webhooks'
-  adjacent='other-tenant:skymill:stream:github.webhooks'
+  stream=$skymill_stream
+  adjacent="$fatline_scope:skymill:stream:adjacent"
+  foreign="$fatline_scope-foreign:skymill:stream:github.webhooks"
   expect_skymill_noperm() {
     local description=$1; shift
     local result
@@ -449,20 +500,21 @@ if [[ "${COMPOSITION_SKYMILL_ACL_MODE:-0}" == 1 ]]; then
   entries=$(skymill_cli XREADGROUP GROUP qualifier worker COUNT 1 STREAMS "$stream" '>')
   [[ "$entries" == *qualified* ]] || { echo "FAIL: scoped XREADGROUP missing message: $entries" >&2; exit 1; }
   [[ "$(skymill_cli XACK "$stream" qualifier "$entry")" == 1 ]]
-  expect_skymill_noperm "Logma key read" GET logma:acl:allowed
-  expect_skymill_noperm "Logma key write" SET logma:acl:allowed denied
+  expect_skymill_noperm "Logma key read" GET "$fatline_scope:logma:acl:allowed"
+  expect_skymill_noperm "Logma key write" SET "$fatline_scope:logma:acl:allowed" denied
   expect_skymill_noperm "adjacent stream write" XADD "$adjacent" '*' payload denied
   expect_skymill_noperm "adjacent stream read" XREAD STREAMS "$adjacent" 0
+  expect_skymill_noperm "foreign scope stream write" XADD "$foreign" '*' payload denied
   expect_skymill_noperm "Redis administration" CONFIG GET maxmemory
   expect_skymill_noperm "Redis Function management" FUNCTION FLUSH
   expect_skymill_noperm "Redis ACL administration" ACL LIST
-  expect_skymill_noperm "Logma channel publish" PUBLISH logma:qualification:dispatch:probe denied
+  expect_skymill_noperm "Logma channel publish" PUBLISH "$fatline_scope:logma:qualification:dispatch:probe" denied
   expect_skymill_noperm "Logma Function execution" FCALL dashxd_ratelimit_lifecycle_timer_arm_absolute_v1 0
   [[ "$(skymill_cli XLEN "$stream" 2>&1)" == *NOPERM* ]] || {
     echo "FAIL: undeclared XLEN unexpectedly allowed" >&2; exit 1;
   }
   echo "PASS: Skymill scoped Streams operations, adjacent tenant, Logma and administration isolation"
-  exit 0
+  [[ "$agni_reconcile_mode" == 1 ]] || exit 0
 fi
 if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   echo "CHECK: dedicated Redis principal, key, channel and administration isolation"
@@ -478,8 +530,8 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
     result=$(subscriber_cli "$@" 2>&1) || true
     [[ "$result" == *NOPERM* ]] || { echo "FAIL: $description: expected NOPERM, got: $result" >&2; exit 1; }
   }
-  [[ "$(redis_cli SET logma:acl:allowed value)" == OK ]]
-  [[ "$(redis_cli GET logma:acl:allowed)" == value ]]
+  [[ "$(redis_cli SET "$fatline_scope:logma:acl:allowed" value)" == OK ]]
+  [[ "$(redis_cli GET "$fatline_scope:logma:acl:allowed")" == value ]]
   expect_noperm "cross-tenant write" SET foreign:tenant:secret denied
   expect_noperm "cross-tenant read" GET foreign:tenant:secret
   expect_noperm "cross-tenant delete" DEL foreign:tenant:secret
@@ -489,13 +541,13 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   expect_noperm "function replacement" FUNCTION FLUSH
   expect_noperm "function load" FUNCTION LOAD '#!lua name=intruder'
   expect_noperm "foreign channel publish" PUBLISH foreign:shutdown test
-  expect_subscriber_noperm "subscriber cannot read keys" GET logma:acl:allowed
-  expect_subscriber_noperm "subscriber cannot publish" PUBLISH logma:qualification:dispatch:probe test
+  expect_subscriber_noperm "subscriber cannot read keys" GET "$fatline_scope:logma:acl:allowed"
+  expect_subscriber_noperm "subscriber cannot publish" PUBLISH "$fatline_scope:logma:qualification:dispatch:probe" test
   expect_subscriber_noperm "subscriber cannot subscribe to foreign channel" SUBSCRIBE foreign:shutdown
-  [[ "$(redis_cli GET logma:acl:allowed)" == value ]] || { echo "FAIL: allowed key changed" >&2; exit 1; }
+  [[ "$(redis_cli GET "$fatline_scope:logma:acl:allowed")" == value ]] || { echo "FAIL: allowed key changed" >&2; exit 1; }
   [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "FAIL: bootstrap principal still authenticates" >&2; exit 1; }
   echo "PASS: dedicated Redis ACL key, channel, administration, Function and bootstrap revocation probes"
-  exit 0
+  [[ "$agni_reconcile_mode" == 1 ]] || exit 0
 fi
 if [[ "$nginx_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
   echo "CHECK: systemd-user Nginx Quadlet restart"
@@ -508,7 +560,7 @@ if [[ "$nginx_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
   [[ "$(redis_cli PING)" == PONG ]] || { echo "Nginx proxy did not recover" >&2; false; }
   echo "PASS: systemd-user Nginx Quadlet restart and Unix-socket proxy recovery"
 fi
-if [[ "$redis_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 ]]; then
+if [[ "$redis_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 && "$agni_reconcile_mode" != 1 ]]; then
   echo "CHECK: systemd-user Redis Quadlet restart"
   systemctl --user restart "$redis_quadlet_service"
   [[ "$(systemctl --user is-active "$redis_quadlet_service")" == active ]]
@@ -554,6 +606,7 @@ DropCapability=all
 NoNewPrivileges=true
 Volume=$work/lifecycle-state:/var/lib/logma/lifecycle
 Environment=LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle
+Environment=FATLINE_SCOPE=$fatline_scope
 Environment=REDIS_USERNAME=logma
 Environment=REDISCLI_AUTH=$redis_pass
 Environment=API_KEY=$api_pass
@@ -573,6 +626,7 @@ else
     --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
     -v "$work/lifecycle-state:/var/lib/logma/lifecycle" \
     -e LOGMA_LIFECYCLE_STATE_DIR=/var/lib/logma/lifecycle \
+    -e FATLINE_SCOPE="$fatline_scope" \
     -e REDIS_USERNAME=logma -e REDISCLI_AUTH="$redis_pass" -e API_KEY="$api_pass" \
     -p 127.0.0.1::8080 "$logma_image" >/dev/null
 fi
@@ -590,10 +644,18 @@ done
 # Exercise actual lifecycle arming, ticking, and removal through Logma's Redis client.
 # This is deliberately fail-closed: the provisional ACL may need refinement.
 lifecycle_url="http://127.0.0.1:$port/lifecycle"
+readiness_url="$lifecycle_url/readyz"
+if [[ "${COMPOSITION_STRICT_READINESS_MODE:-0}" == 1 ]]; then
+  readiness_status=$(curl -sS --max-time 3 -o "$work/readiness-healthy.txt" -w '%{http_code}' "$readiness_url")
+  [[ "$readiness_status" == 200 && "$(cat "$work/readiness-healthy.txt")" == ready ]] || {
+    echo "FAIL: readiness did not report healthy Redis and lifecycle Functions (HTTP $readiness_status)" >&2; exit 1;
+  }
+  echo "PASS: readiness reports healthy Redis and lifecycle Functions"
+fi
 deployment="qualification-$"
 # Use a policy code returned by the running Logma build; do not guess enum strings.
 policy_code=$(curl -fsS --max-time 5 -H "X-API-Key: $api_pass" "$url" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert isinstance(p,list) and p, "empty lifecycle policy catalog"; x=next((x for x in p if x.get("duration")=="720h0m0s"),p[-1]); assert str(x.get("policy_code","")).isdigit(), "missing policy code"; print(x["policy_code"])')
-payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$deployment" "$policy_code")
+payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"%s:logma:qualification:shutdown"}' "$deployment" "$policy_code" "$fatline_scope")
 register_status=$(curl -sS --max-time 10 -o "$work/register.json" -w '%{http_code}' \
   -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
   --data "$payload" "$lifecycle_url/")
@@ -615,8 +677,8 @@ echo "PASS: Logma lifecycle register/arm, tick and remove via Redis"
 if [[ "${COMPOSITION_DISPATCH_MODE:-0}" == 1 ]]; then
   echo "CHECK: live lifecycle expiration and duplicate-dispatch fence"
   dispatch_id="dispatch-$"
-  dispatch_channel="logma:qualification:dispatch:$"
-  dispatch_key="logma:lifecycle:{deployment:$dispatch_id}:lifecycle:timers"
+  dispatch_channel="$fatline_scope:logma:qualification:dispatch:$"
+  dispatch_key="$fatline_scope:logma:lifecycle:{deployment:$dispatch_id}:lifecycle:timers"
   dispatch_log="$work/dispatch-subscriber.log"
   # --raw emits each RESP2 subscribe event on separate lines.
   subscriber_cli --raw SUBSCRIBE "$dispatch_channel" >"$dispatch_log" 2>&1 &
@@ -682,7 +744,7 @@ PY
 fi
 # Leave a durable registration in the mounted state directory across restart.
 restore_deployment="restore-$"
-restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
+restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"%s:logma:qualification:shutdown"}' "$restore_deployment" "$policy_code" "$fatline_scope")
 echo "CHECK: registering durable lifecycle fixture"
 restore_status=$(curl -sS --max-time 10 -o "$work/restore-register.json" -w '%{http_code}' \
   -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
@@ -704,6 +766,7 @@ port=$(podman port "$logma" 8080/tcp | sed -n '1s/.*://p')
 [[ "$port" =~ ^[0-9]+$ ]] || { echo "Cannot resolve restarted Logma published port" >&2; false; }
 url="http://127.0.0.1:$port/lifecycle/policies"
 lifecycle_url="http://127.0.0.1:$port/lifecycle"
+readiness_url="$lifecycle_url/readyz"
 echo "CHECK: restored Logma HTTP endpoint on port $port"
 for i in $(seq 1 60); do
   status=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' -H "X-API-Key: $api_pass" "$url" 2>/dev/null || true)
@@ -776,13 +839,14 @@ if [[ "$quadlet_mode" == 1 ]]; then
         sleep .25
       done
       [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after coordinated cold restart: $status" >&2; exit 1; }
+      readiness_url="http://127.0.0.1:$port/lifecycle/readyz"
       echo "PASS: Logma-only start restored Redis Functions, revoked bootstrap principal and recovered authenticated HTTP"
       if [[ "${COMPOSITION_REDIS_CRASH_BASELINE_MODE:-0}" == 1 ]]; then
         if [[ "${COMPOSITION_LIFECYCLE_CRASH_MODE:-0}" == 1 ]]; then
           # The earlier restart test deliberately deletes restore_deployment.
           # Establish a separate durable fixture immediately before the crash.
           restore_deployment="crash-fixture-$"
-          restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$restore_deployment" "$policy_code")
+          restore_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"%s:logma:qualification:shutdown"}' "$restore_deployment" "$policy_code" "$fatline_scope")
           lifecycle_url="http://127.0.0.1:$port/lifecycle"
           echo "CHECK: registering persistent lifecycle fixture immediately before Redis crash"
           crash_fixture_status=$(curl -sS --max-time 10 -o "$work/crash-fixture-register.json" -w '%{http_code}' \
@@ -808,7 +872,7 @@ if not isinstance(deadline, str) or not deadline:
 datetime.fromisoformat(deadline.replace("Z", "+00:00"))
 open(sys.argv[2], "w").write(deadline)
 PY
-            timer_key="logma:lifecycle:{deployment:$restore_deployment}:lifecycle:timers"
+            timer_key="$fatline_scope:logma:lifecycle:{deployment:$restore_deployment}:lifecycle:timers"
             expected_deadline_ms=$(python3 - "$work/timer-deadline.txt" <<'PY'
 from datetime import datetime
 import sys
@@ -838,6 +902,13 @@ PY
           [[ "$window_port" =~ ^[0-9]+$ ]] || { echo "FAIL: cannot resolve Logma port" >&2; exit 1; }
           window_url="http://127.0.0.1:$window_port/lifecycle/tick"
           unavailable_status=$(curl -sS --connect-timeout 1 --max-time 2 -o "$work/unavailable-response.json" -w '%{http_code}' -X POST -H "X-API-Key: $api_pass" "$window_url" 2>/dev/null || true)
+          if [[ "${COMPOSITION_STRICT_READINESS_MODE:-0}" == 1 ]]; then
+            readiness_unavailable=$(curl -sS --connect-timeout 1 --max-time 4 -o "$work/readiness-redis-down.txt" -w '%{http_code}' "$readiness_url" 2>/dev/null || true)
+            [[ "$readiness_unavailable" == 503 && "$(cat "$work/readiness-redis-down.txt")" == *"not ready"* ]] || {
+              echo "FAIL: readiness must return HTTP 503 while Redis is unavailable; got $readiness_unavailable" >&2; exit 1;
+            }
+            echo "PASS: readiness returned HTTP 503 during Redis outage"
+          fi
           podman unpause "$redis" >/dev/null
           [[ "$unavailable_status" != 200 && "$unavailable_status" != 204 ]] || {
             echo "FAIL: Logma reported successful lifecycle tick while Redis was paused" >&2; exit 1;
@@ -863,6 +934,13 @@ PY
         [[ -z "$function_listing" ]] ||
           { printf 'FAIL: expected empty Redis Function library after crash, got: %s\n' "$function_listing" >&2; exit 1; }
         echo "PASS: systemd restarted Redis after SIGKILL; Logma container remained unchanged; RAM-only Functions absent"
+        if [[ "${COMPOSITION_STRICT_READINESS_MODE:-0}" == 1 ]]; then
+          missing_readiness=$(curl -sS --connect-timeout 1 --max-time 4 -o "$work/readiness-functions-missing.txt" -w '%{http_code}' "$readiness_url" 2>/dev/null || true)
+          [[ "$missing_readiness" == 503 && "$(cat "$work/readiness-functions-missing.txt")" == *"not ready"* ]] || {
+            echo "FAIL: readiness must return HTTP 503 when Redis Functions are absent; got $missing_readiness" >&2; exit 1;
+          }
+          echo "PASS: readiness returned HTTP 503 with Redis restarted and Functions missing"
+        fi
         if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
           echo "CHECK: Logma lifecycle tick while Redis is reachable but Functions are missing"
           missing_status=$(curl -sS --connect-timeout 1 --max-time 5 -o "$work/missing-functions-response.json" -w '%{http_code}' -X POST -H "X-API-Key: $api_pass" "$window_url" 2>/dev/null || true)
@@ -893,6 +971,16 @@ PY
           fi
           [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
             { echo "FAIL: Logma replaced during Function reconciliation" >&2; exit 1; }
+          if [[ "${COMPOSITION_STRICT_READINESS_MODE:-0}" == 1 ]]; then
+            readiness_recovered=$(curl -sS --connect-timeout 2 --max-time 4 -o "$work/readiness-recovered.txt" -w '%{http_code}' "$readiness_url" 2>/dev/null || true)
+            [[ "$readiness_recovered" == 200 && "$(cat "$work/readiness-recovered.txt")" == ready ]] || {
+              echo "FAIL: readiness did not recover after Function reconciliation; got $readiness_recovered" >&2; exit 1;
+            }
+            [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] || {
+              echo "FAIL: Logma restarted while readiness recovered" >&2; exit 1;
+            }
+            echo "PASS: readiness recovered after reconciliation without Logma restart"
+          fi
           if [[ "${COMPOSITION_LIFECYCLE_CRASH_MODE:-0}" == 1 ]]; then
             echo "CHECK: Logma lifecycle operations after Redis crash and Function restoration"
             [[ "$(podman inspect "$logma" --format '{{.Id}}')" == "$old_logma_id" ]] ||
@@ -906,6 +994,7 @@ PY
               { echo "FAIL: cannot resolve Logma HTTP port after coordinated restart" >&2; exit 1; }
             url="http://127.0.0.1:$port/lifecycle/policies"
             lifecycle_url="http://127.0.0.1:$port/lifecycle"
+            readiness_url="$lifecycle_url/readyz"
             echo "CHECK: Logma HTTP transport after Redis Function restoration"
             echo "INFO: Logma container=$old_logma_id port=$port endpoint=$lifecycle_url/"
             recovered_list_status=000
@@ -941,7 +1030,7 @@ PY
               echo "PASS: lifecycle tick recovered after Functions reconciliation, without Logma replacement"
             fi
             recovered_deployment="crash-recovered-$"
-            recovered_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"logma:qualification:shutdown"}' "$recovered_deployment" "$policy_code")
+            recovered_payload=$(printf '{"deployment_id":"%s","policy_code":"%s","shutdown_channel":"%s:logma:qualification:shutdown"}' "$recovered_deployment" "$policy_code" "$fatline_scope")
             recovered_register_status=$(curl -sS --max-time 10 -o "$work/crash-register.json" -w '%{http_code}' \
               -H "X-API-Key: $api_pass" -H 'Content-Type: application/json' \
               --data "$recovered_payload" "$lifecycle_url/" || true)
@@ -977,7 +1066,7 @@ PY
               redis_cli TYPE "$timer_key" >&2 || true
               redis_cli ZRANGE "$timer_key" 0 -1 WITHSCORES >&2 || true
               echo "DIAG: lifecycle Redis keys" >&2
-              redis_cli --scan --pattern 'logma:lifecycle:*' >&2 || true
+              redis_cli --scan --pattern "$fatline_scope:logma:lifecycle:*" >&2 || true
               echo "DIAG: Logma reconciliation logs" >&2
               podman logs --tail 160 "$logma" >&2 || true
               echo "DIAG: durable registrations from Logma HTTP" >&2

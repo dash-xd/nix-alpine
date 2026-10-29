@@ -18,6 +18,8 @@ case "$composition" in
   fatline) ;;
   *) echo "Unsupported composition: $composition" >&2; exit 2 ;;
 esac
+# Every Fatline runtime gate uses the provider image built from the pinned source.
+make qualify-composition-logma-image
 run_gate() {
   case "$1" in
     baseline) make qualify-composition-baseline ;;
@@ -32,6 +34,8 @@ run_gate() {
     function-reconciliation) make qualify-composition-function-reconciliation ;;
     lifecycle-crash) make qualify-composition-lifecycle-crash ;;
     crash-window) make qualify-composition-crash-window ;;
+    strict-readiness) make qualify-composition-strict-readiness ;;
+    production-acl) make qualify-composition-production-acl ;;
     cold-start) make qualify-composition-cold-start ;;
     *) echo "Unknown Fatline gate: $1" >&2; exit 2 ;;
   esac
