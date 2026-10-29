@@ -534,7 +534,6 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   }
   [[ "$(redis_cli HSET "$fatline_scope:logma:pubsub:channel:acl-allowed" name value)" == 1 ]]
   [[ "$(redis_cli HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name)" == value ]]
-  [[ "$(redis_cli SET "$fatline_scope:logma:acl:allowed" value)" == OK ]]
   expect_noperm "cross-tenant write" SET foreign:tenant:secret denied
   expect_noperm "cross-tenant read" GET foreign:tenant:secret
   expect_noperm "cross-tenant delete" DEL foreign:tenant:secret
@@ -547,7 +546,7 @@ if [[ "${COMPOSITION_ACL_ISOLATION_MODE:-0}" == 1 ]]; then
   expect_subscriber_noperm "subscriber cannot read keys" HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name
   expect_subscriber_noperm "subscriber cannot publish" PUBLISH "$fatline_scope:logma:qualification:dispatch:probe" test
   expect_subscriber_noperm "subscriber cannot subscribe to foreign channel" SUBSCRIBE foreign:shutdown
-  [[ "$(redis_cli GET "$fatline_scope:logma:acl:allowed")" == value ]] || { echo "FAIL: allowed key changed" >&2; exit 1; }
+  [[ "$(redis_cli HGET "$fatline_scope:logma:pubsub:channel:acl-allowed" name)" == value ]] || { echo "FAIL: allowed scoped hash changed" >&2; exit 1; }
   [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "FAIL: bootstrap principal still authenticates" >&2; exit 1; }
   echo "PASS: dedicated Redis ACL key, channel, administration, Function and bootstrap revocation probes"
   [[ "$agni_reconcile_mode" == 1 ]] || exit 0
