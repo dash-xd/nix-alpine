@@ -571,7 +571,7 @@ if [[ "$redis_quadlet_mode" == 1 && "$bootstrap_unit_mode" != 1 && "$agni_reconc
     sleep .25
   done
   [[ "$(redis_cli PING)" == PONG ]] || { echo "Redis did not recover through Nginx" >&2; false; }
-  [[ "$(redis_cli SET logma:after-restart ok)" == OK ]]
+  [[ "$(redis_cli HSET "$fatline_scope:logma:pubsub:channel:after-restart" state ok)" == 1 ]]
   echo "CHECK: reinstalling Redis Functions after RAM-only Redis restart"
   bootstrap_functions
   [[ "$(redis_cli PING)" == PONG ]]
