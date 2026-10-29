@@ -289,9 +289,10 @@ podman rm -f "$bootstrap" >/dev/null
 write_bootstrap_entry() {
   local path=$1 name
   {
-    printf '#!/usr/bin/env bash\\nset -Eeuo pipefail\\n'
+    printf '#!/usr/bin/env bash\nset -Eeuo pipefail\n'
     for name in redis_image logma_image nginx bootstrap net cli redis_pass bootstrap_pass api_pass fatline_scope; do
-      printf '%s=%q\\n' "$name" "${!name}"
+      [[ -n "${!name}" ]] || { echo "Missing bootstrap script context: $name" >&2; return 1; }
+      printf '%s=%q\n' "$name" "${!name}"
     done
     declare -f bootstrap_cli bootstrap_functions
   } > "$path"
