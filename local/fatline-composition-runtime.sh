@@ -233,6 +233,11 @@ redis_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
     "$redis_image" -h 127.0.0.1 -p 6379 --user logma -a "$redis_pass" --no-auth-warning "$@"
 }
+redis_sorted_set_score() {
+  local key=$1 member=$2
+  redis_cli --raw ZRANGEBYSCORE "$key" -inf +inf WITHSCORES |
+    awk -v wanted="$member" 'NR % 2 { current=$0; next } current == wanted { print; found=1 } END { if (!found) exit 0 }'
+}
 subscriber_cli() {
   podman run --rm --network "container:$nginx" --entrypoint "$cli" \
     "$redis_image" -h 127.0.0.1 -p 6379 --user subscriber -a "$subscriber_pass" --no-auth-warning "$@"
@@ -719,14 +724,14 @@ PY
     sleep .5
   done
   [[ "$published" == 1 ]] || { echo "FAIL: no dispatch observed on live subscription" >&2; cat "$dispatch_log" >&2; exit 1; }
-  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: dispatched timer still armed" >&2; exit 1; }
+  [[ -z "$(redis_sorted_set_score "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: dispatched timer still armed" >&2; exit 1; }
   [[ -f "$work/lifecycle-state/$dispatch_id.dispatched" ]] || { echo "FAIL: durable dispatch marker absent" >&2; exit 1; }
   echo "PASS: live subscriber received lifecycle shutdown and durable dispatch fence exists"
   sleep 12
-  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: reconciliation rearmed dispatched timer" >&2; exit 1; }
+  [[ -z "$(redis_sorted_set_score "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: reconciliation rearmed dispatched timer" >&2; exit 1; }
   if [[ "$quadlet_mode" == 1 ]]; then systemctl --user restart "$quadlet_service"; else podman restart "$logma" >/dev/null; fi
   sleep 7
-  [[ -z "$(redis_cli ZSCORE "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: restart rearmed dispatched timer" >&2; exit 1; }
+  [[ -z "$(redis_sorted_set_score "$dispatch_key" shutdown:timer)" ]] || { echo "FAIL: restart rearmed dispatched timer" >&2; exit 1; }
   # One Redis subscribe handshake emits three lines; each delivered message
   # adds another three. Exactly one publication must be observed.
   lines=$(wc -l <"$dispatch_log")
@@ -874,7 +879,7 @@ value = open(sys.argv[1]).read()
 print(int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000))
 PY
 )
-            before_score=$(redis_cli ZSCORE "$timer_key" shutdown:timer)
+            before_score=$(redis_sorted_set_score "$timer_key" shutdown:timer)
             [[ "$before_score" == "$expected_deadline_ms" ]] || {
               echo "FAIL: pre-crash timer score $before_score differs from durable deadline $expected_deadline_ms" >&2
               exit 1
@@ -1046,7 +1051,7 @@ PY
             echo "CHECK: Redis timer keys reconstructed after RAM-only restart"
             recovered_timer=false
             for attempt in $(seq 1 30); do
-              recovered_score=$(redis_cli ZSCORE "$timer_key" shutdown:timer 2>/dev/null || true)
+              recovered_score=$(redis_sorted_set_score "$timer_key" shutdown:timer 2>/dev/null || true)
               if [[ "$recovered_score" == "$expected_deadline_ms" ]]; then
                 recovered_timer=true
                 break
@@ -1055,7 +1060,7 @@ PY
             done
             if [[ "$recovered_timer" != true ]]; then
               echo "FAIL: lifecycle timer score not restored to original absolute deadline ($expected_deadline_ms)" >&2
-              echo "DIAG: observed ZSCORE=${recovered_score:-<empty>} key=$timer_key" >&2
+              echo "DIAG: observed sorted-set score=${recovered_score:-<empty>} key=$timer_key" >&2
               echo "DIAG: timer key TYPE and ZRANGE" >&2
               redis_cli TYPE "$timer_key" >&2 || true
               redis_cli ZRANGE "$timer_key" 0 -1 WITHSCORES >&2 || true
@@ -1077,7 +1082,7 @@ matches = [r for r in regs if r.get("deployment_id") == sys.argv[3]]
 if len(matches) != 1 or matches[0].get("deadline") != open(sys.argv[2]).read():
     raise SystemExit("FAIL: durable lifecycle deadline changed after Redis crash")
 PY
-            echo "PASS: Redis timer ZSCORE restored to original deadline; durable absolute deadline unchanged"
+            echo "PASS: Redis timer score verified with scoped ZRANGEBYSCORE; durable absolute deadline unchanged"
           fi
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
           echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
