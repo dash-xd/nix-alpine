@@ -249,7 +249,7 @@ qualify-composition:
 	elif [[ "$(LOG)" == "1" ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-composition SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)" LOG=0; \
 	else \
-	  SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)" bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)"; \
+	  bash ./qualify-composition.sh --composition "$(COMPOSITION)" --gate "$(GATE)" --scope "$(SCOPE)" --container "$(CONTAINER)" --workspaces "$(WORKSPACES)"; \
 	fi
 qualify-composition-baseline:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
