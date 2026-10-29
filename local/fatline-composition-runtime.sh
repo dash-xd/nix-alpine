@@ -253,6 +253,8 @@ podman run -d --name "$bootstrap" --network "$net" \
   --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges \
   --mount type=tmpfs,destination=/var/lib/logma/lifecycle,tmpfs-size=4194304,tmpfs-mode=1777 \
   -e LOGMA_RATELIMITER_BOOTSTRAP=internal \
+  -e LOGMA_BIND_ADDR=0.0.0.0 \
+  -e REDIS_NETWORK=tcp -e REDIS_URI=redis-proxy:6379 \
   -e REDIS_USERNAME=bootstrap -e REDISCLI_AUTH="$bootstrap_pass" \
   -e API_KEY="$api_pass" "$logma_image" >/dev/null
 function_ready=false
