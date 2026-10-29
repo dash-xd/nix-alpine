@@ -24,6 +24,7 @@ done
 [[ -n "$scope" && -n "$container" && -n "$workspaces" ]] || { echo "scope, container, and workspaces are required" >&2; exit 2; }
 cd "$(dirname "$0")"
 make_with_context() {
+  printf 'INFO: dispatcher make context scope=%s container=%s workspaces=%s target=%s\n' "$scope" "$container" "$workspaces" "$1" >&2
   command make SCOPE="$scope" CONTAINER="$container" WORKSPACES="$workspaces" "$@"
 }
 # Component artifact workflows share the composition entrypoint but do not
