@@ -284,6 +284,19 @@ podman rm -f "$bootstrap" >/dev/null
 [[ "$(bootstrap_cli ACL SETUSER bootstrap off)" == OK ]] || { echo "Failed to revoke bootstrap identity" >&2; exit 1; }
 [[ "$(bootstrap_cli PING 2>&1)" == *WRONGPASS* ]] || { echo "Bootstrap identity still authenticates" >&2; exit 1; }
 }
+# Create the oneshot and reconciler scripts from the same complete runtime
+# context. Keep this list in one place so set -u catches no missing inputs.
+write_bootstrap_entry() {
+  local path=$1 name
+  {
+    printf '#!/usr/bin/env bash\\nset -Eeuo pipefail\\n'
+    for name in redis_image logma_image nginx bootstrap net cli redis_pass bootstrap_pass api_pass fatline_scope; do
+      printf '%s=%q\\n' "$name" "${!name}"
+    done
+    declare -f bootstrap_cli bootstrap_functions
+  } > "$path"
+  chmod 700 "$path"
+}
 if [[ "$cold_start_mode" == 1 ]]; then
   [[ "$quadlet_mode" == 1 && "$redis_quadlet_mode" == 1 && "$nginx_quadlet_mode" == 1 ]] || {
     echo "Cold-start mode requires all three Quadlet modes" >&2; exit 1;
@@ -306,23 +319,8 @@ if [[ "$bootstrap_unit_mode" == 1 ]]; then
   [[ ! -e "$bootstrap_unit_file" ]] || { echo "Refusing existing unit: $bootstrap_unit_file" >&2; exit 1; }
   # The service executes the same qualification bootstrap function in a
   # separate shell. Its credentials are ephemeral and never promoted.
-  declare -f bootstrap_cli bootstrap_functions > "$work/bootstrap-functions.sh"
-  cat > "$work/bootstrap-entry.sh" <<EOF
-#!/usr/bin/env bash
-set -Eeuo pipefail
-redis_image=$(printf '%q' "$redis_image")
-logma_image=$(printf '%q' "$logma_image")
-nginx=$(printf '%q' "$nginx")
-bootstrap=$(printf '%q' "$bootstrap")
-net=$(printf '%q' "$net")
-cli=$(printf '%q' "$cli")
-redis_pass=$(printf '%q' "$redis_pass")
-bootstrap_pass=$(printf '%q' "$bootstrap_pass")
-api_pass=$(printf '%q' "$api_pass")
-EOF
-  cat "$work/bootstrap-functions.sh" >> "$work/bootstrap-entry.sh"
+  write_bootstrap_entry "$work/bootstrap-entry.sh"
   printf '\nbootstrap_functions\n' >> "$work/bootstrap-entry.sh"
-  chmod 700 "$work/bootstrap-entry.sh"
   cat > "$bootstrap_unit_file" <<EOF
 [Unit]
 Description=Disposable Fatline Redis Function bootstrap
@@ -338,20 +336,7 @@ EOF
   chmod 600 "$bootstrap_unit_file"
   systemctl --user daemon-reload
   if [[ "${COMPOSITION_FUNCTION_RECONCILE_MODE:-0}" == 1 ]]; then
-    cat > "$work/reconcile-entry.sh" <<EOF
-#!/usr/bin/env bash
-set -Eeuo pipefail
-redis_image=$(printf '%q' "$redis_image")
-logma_image=$(printf '%q' "$logma_image")
-nginx=$(printf '%q' "$nginx")
-bootstrap=$(printf '%q' "$bootstrap")
-net=$(printf '%q' "$net")
-cli=$(printf '%q' "$cli")
-redis_pass=$(printf '%q' "$redis_pass")
-bootstrap_pass=$(printf '%q' "$bootstrap_pass")
-api_pass=$(printf '%q' "$api_pass")
-EOF
-    cat "$work/bootstrap-functions.sh" >> "$work/reconcile-entry.sh"
+    write_bootstrap_entry "$work/reconcile-entry.sh"
     cat >> "$work/reconcile-entry.sh" <<'EOF'
 # The privileged principal is available only on a freshly started Redis.
 # Inspect the exact library instead of treating arbitrary FCALL errors as readiness.
