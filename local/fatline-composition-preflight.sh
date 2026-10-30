@@ -31,4 +31,4 @@ ports=$(podman image inspect "$logma_image" --format '{{json .Config.ExposedPort
 grep -Fq 'Environment=LOGMA_BIND_ADDR=0.0.0.0' "$agni/composition.nix" || { echo "Agni composition must bind Logma on the container interface" >&2; exit 1; }
 grep -Fq 'Environment=REDIS_NETWORK=tcp' "$agni/composition.nix" || { echo "Agni composition must select Logma TCP Redis transport" >&2; exit 1; }
 grep -Fq 'Environment=REDIS_URI=redis-proxy:6379' "$agni/composition.nix" || { echo "Agni composition must route Logma to the Redis proxy" >&2; exit 1; }
-echo "Fatline composition preflight passed; runtime connectivity and ACL checks remain unqualified."
+echo "PASS: Fatline composition preflight passed; runtime checks follow in the selected gate."
