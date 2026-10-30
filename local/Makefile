@@ -81,6 +81,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
+	@echo "make qualify-coreos-qemu LOG=1 (pinned FCOS boot + transient Podman unit in QEMU; systemd-user)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
@@ -569,3 +570,49 @@ ci-archive-export:
 	@bash ./ci-image-archives.sh export "$(CI_ARCHIVE_DIR)" $(CI_IMAGES)
 ci-archive-import:
 	@bash ./ci-image-archives.sh import "$(CI_ARCHIVE_DIR)" $(CI_IMAGES)
+
+
+# Fedora CoreOS QEMU qualification is built in Nix-Alpine and supervised by
+# a host systemd-user transient unit. Workspace Butane config/resources are
+# explicit, hashed Nix inputs; the guest runs rootful Podman under systemd.
+COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
+COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
+COREOS_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/$(SCOPE)
+COREOS_UNIT ?= fatline-coreos-qemu-$(SCOPE)
+COREOS_QEMU_TIMEOUT ?= 600
+COREOS_QEMU_RAM_MB ?= 3072
+COREOS_QEMU_CPUS ?= 2
+COREOS_QEMU_ACCEL ?= auto
+
+.PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean
+qualify-coreos-qemu:
+	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(LOG)" == 1 ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
+	else \
+	  $(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
+	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
+	  $(MAKE) coreos-qemu-build; \
+	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)"; \
+	fi
+coreos-qemu-build:
+	@set -Eeuo pipefail; \
+	  test -f "$(COREOS_CONFIG_DIR)/fatline-bootstrap.bu" || { echo "Missing Butane config: $(COREOS_CONFIG_DIR)/fatline-bootstrap.bu" >&2; exit 2; }; \
+	  test -d "$(COREOS_RESOURCES)" || { echo "Missing Butane resource directory: $(COREOS_RESOURCES)" >&2; exit 2; }; \
+	  workspace_root="$$(realpath "$(WORKSPACES)")"; \
+	  config_dir="$$(realpath "$(COREOS_CONFIG_DIR)")"; \
+	  resource_dir="$$(realpath "$(COREOS_RESOURCES)")"; \
+	  case "$$config_dir/" in "$$workspace_root/"*) ;; *) echo "COREOS_CONFIG_DIR must be under WORKSPACES" >&2; exit 2;; esac; \
+	  case "$$resource_dir/" in "$$workspace_root/"*) ;; *) echo "COREOS_RESOURCES must be under WORKSPACES" >&2; exit 2;; esac; \
+	  config_rel="$$(realpath --relative-to "$$workspace_root" "$$config_dir")"; \
+	  resource_rel="$$(realpath --relative-to "$$workspace_root" "$$resource_dir")"; \
+	  mkdir -p "$(COREOS_STATE)"; \
+	  output="$$(podman exec -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
+	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
+	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
+	  sha256sum "$(COREOS_STATE)/base.qcow2" "$(COREOS_STATE)/config.ign" > "$(COREOS_STATE)/artifacts.sha256"; \
+	  echo "PASS: pinned FCOS disk and workspace-composed Ignition artifact staged at $(COREOS_STATE)"
+coreos-qemu-clean:
+	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
+	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
+	@rm -f "$(COREOS_STATE)/overlay.qcow2"
