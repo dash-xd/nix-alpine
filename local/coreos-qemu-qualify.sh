@@ -8,6 +8,8 @@ ram_mb="${4:-3072}"
 cpus="${5:-2}"
 accel="${6:-auto}"
 qemu_image="${7:?QEMU runtime image is required}"
+display="${8:-headless}"
+web_port="${9:-8006}"
 state="$(realpath -m "$state")"
 
 base="$state/base.qcow2"
@@ -26,6 +28,13 @@ test -s "$ignition" || { echo "Missing Ignition config: $ignition" >&2; exit 2; 
 [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid CPU count" >&2; exit 2; }
 [[ "$unit" =~ ^[A-Za-z0-9_.@-]+$ ]] || { echo "Invalid transient unit name" >&2; exit 2; }
 [[ "$accel" == auto || "$accel" == kvm || "$accel" == tcg ]] || { echo "COREOS_QEMU_ACCEL must be auto, kvm, or tcg" >&2; exit 2; }
+[[ "$display" == headless || "$display" == web ]] || { echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; }
+if [[ "$display" == web ]]; then
+  [[ "$web_port" =~ ^[0-9]+$ ]] && (( web_port >= 1024 && web_port <= 65535 )) || {
+    echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2
+    exit 2
+  }
+fi
 
 if [[ "$accel" == auto ]]; then
   if [[ -r /dev/kvm && -w /dev/kvm ]]; then accel=kvm; else accel=tcg; fi
@@ -56,6 +65,13 @@ podman run --rm --pull=never --volume "$state:/state:rw,z" "$image_id" \
   img create -q -f qcow2 -F qcow2 -b /state/base.qcow2 /state/overlay.qcow2
 
 podman_args=(run --rm --pull=never --name "$container_name" --volume "$state:/state:rw,z")
+qemu_command=run
+if [[ "$display" == web ]]; then
+  qemu_command=run-web
+  # The browser console is reachable only from the host itself. Raw VNC stays
+  # on the container's loopback interface and is never published.
+  podman_args+=(--publish "127.0.0.1:${web_port}:6080")
+fi
 if [[ "$accel" == kvm ]]; then
   podman_args+=(--device /dev/kvm:/dev/kvm:rw)
 fi
@@ -66,7 +82,7 @@ systemd-run --user --quiet --unit="$unit" --collect \
   --property=KillMode=mixed \
   --property=RuntimeMaxSec=15m \
   --property=TimeoutStopSec=20s \
-  -- podman "${podman_args[@]}" "$image_id" run \
+  -- podman "${podman_args[@]}" "$image_id" "$qemu_command" \
     -machine q35 -accel "$qemu_accel" \
     -m "$ram_mb" -smp "$cpus" \
     -drive if=virtio,format=qcow2,file=/state/overlay.qcow2 \
@@ -76,6 +92,9 @@ systemd-run --user --quiet --unit="$unit" --collect \
     -display none -serial file:/state/serial.log -monitor none \
     -no-reboot
 test "$(systemctl --user show --property=Transient --value "$unit.service")" = yes
+if [[ "$display" == web ]]; then
+  echo "QEMU browser console: http://127.0.0.1:${web_port}/vnc.html?autoconnect=true&resize=scale"
+fi
 
 cleanup() {
   systemctl --user stop "$unit.service" >/dev/null 2>&1 || true
@@ -91,6 +110,9 @@ for ((i=0; i<timeout_seconds; i+=2)); do
     echo "QEMU Podman image: $image_id"
     echo "Acceleration: $accel"
     echo "Serial log: $serial"
+    if [[ "$display" == web ]]; then
+      echo "QEMU browser console was available at http://127.0.0.1:${web_port}/vnc.html?autoconnect=true&resize=scale during qualification"
+    fi
     exit 0
   fi
   if systemctl --user is-failed "$unit.service" >/dev/null 2>&1; then
