@@ -21,8 +21,6 @@ container_name="${unit}-guest"
 for command in podman systemctl systemd-run; do
   command -v "$command" >/dev/null || { echo "Missing host command: $command" >&2; exit 2; }
 done
-test -s "$base" || { echo "Missing CoreOS disk: $base" >&2; exit 2; }
-test -s "$ignition" || { echo "Missing Ignition config: $ignition" >&2; exit 2; }
 [[ "$timeout_seconds" =~ ^[0-9]+$ ]] && (( timeout_seconds >= 60 )) || { echo "Invalid QEMU timeout" >&2; exit 2; }
 [[ "$ram_mb" =~ ^[0-9]+$ ]] && (( ram_mb >= 2048 )) || { echo "RAM must be at least 2048 MiB" >&2; exit 2; }
 [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid CPU count" >&2; exit 2; }
@@ -30,11 +28,13 @@ test -s "$ignition" || { echo "Missing Ignition config: $ignition" >&2; exit 2; 
 [[ "$accel" == auto || "$accel" == kvm || "$accel" == tcg ]] || { echo "COREOS_QEMU_ACCEL must be auto, kvm, or tcg" >&2; exit 2; }
 [[ "$display" == headless || "$display" == web ]] || { echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; }
 if [[ "$display" == web ]]; then
-  [[ "$web_port" =~ ^[0-9]+$ ]] && (( web_port >= 1024 && web_port <= 65535 )) || {
+  [[ "$web_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$web_port >= 1024 && 10#$web_port <= 65535 )) || {
     echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2
     exit 2
   }
 fi
+test -s "$base" || { echo "Missing CoreOS disk: $base" >&2; exit 2; }
+test -s "$ignition" || { echo "Missing Ignition config: $ignition" >&2; exit 2; }
 
 if [[ "$accel" == auto ]]; then
   if [[ -r /dev/kvm && -w /dev/kvm ]]; then accel=kvm; else accel=tcg; fi
