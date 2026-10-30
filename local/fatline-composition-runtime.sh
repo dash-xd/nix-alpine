@@ -1058,9 +1058,6 @@ PY
             echo "PASS: Logma lifecycle listing, tick, and registration recovered without Logma restart"
             if [[ "${COMPOSITION_CRASH_WINDOW_MODE:-0}" == 1 ]]; then
               echo "PASS: crash-window lifecycle tick fail-closed and post-reconciliation recovery"
-              echo "Strict HTTP readiness remains unqualified."
-            else
-              echo "Crash-window fail-closed behavior remains a separate qualification gate."
             fi
           fi
           if [[ "${COMPOSITION_TIMER_STATE_MODE:-0}" == 1 ]]; then
@@ -1101,9 +1098,8 @@ PY
             echo "PASS: Redis timer score verified with scoped ZRANGEBYSCORE; durable absolute deadline unchanged"
           fi
           echo "PASS: Function restored and bootstrap identity revoked without Logma restart"
-          echo "Logma lifecycle operation recovery and strict readiness remain unqualified."
         else
-          echo "Crash baseline passed; automatic Function reconciliation and Logma readiness remain unqualified."
+          echo "PASS: Redis crash baseline completed; recovery checks were not selected in this scenario."
         fi
       fi
       if [[ "${COMPOSITION_LIVE_REDIS_RECOVERY_MODE:-0}" == 1 ]]; then
@@ -1152,18 +1148,18 @@ PY
         done
         [[ "$status" == 200 ]] || { echo "Logma HTTP unavailable after Redis recovery: $status" >&2; exit 1; }
         echo "PASS: coordinated Redis restart restored Functions and Logma HTTP with bootstrap identity revoked"
-        echo "Operator-coordinated live Redis recovery passed; automatic restart propagation and production ACL remain unqualified."
+        echo "PASS: coordinated Redis recovery scenario completed."
       else
-        echo "Coordinated cold restart gate passed; live Redis restart and production ACL remain unqualified."
+        echo "PASS: coordinated cold-start scenario completed."
       fi
     elif [[ "$bootstrap_unit_mode" == 1 ]]; then
-      echo "Bootstrap oneshot prerequisite gate passed; coordinated restart and production ACL remain unqualified."
+      echo "PASS: bootstrap oneshot prerequisite scenario completed."
     else
-      echo "Three-component Quadlet restart gate passed; cold-start ordering and production ACL remain unqualified."
+      echo "PASS: three-component Quadlet restart scenario completed."
     fi
   else
-    echo "Logma Quadlet gate passed; remaining components and production ACL remain unqualified."
+    echo "PASS: Logma Quadlet scenario completed."
   fi
 else
-  echo "Fatline lifecycle composition gate passed; full production ACL and systemd-user Quadlet restart remain unqualified."
+  echo "PASS: Fatline lifecycle composition scenario completed."
 fi
