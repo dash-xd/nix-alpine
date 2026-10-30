@@ -22,7 +22,27 @@ while (($#)); do
   esac
 done
 [[ -n "$scope" && -n "$container" && -n "$workspaces" ]] || { echo "scope, container, and workspaces are required" >&2; exit 2; }
+requested_agni_branch="${COMPOSITION_AGNI_BRANCH:-}"
+requested_agni_rev="${COMPOSITION_AGNI_REV:-}"
+requested_logma_branch="${COMPOSITION_LOGMA_BRANCH:-}"
+requested_logma_rev="${COMPOSITION_LOGMA_REV:-}"
+requested_skymill_branch="${COMPOSITION_SKYMILL_BRANCH:-}"
+requested_skymill_rev="${COMPOSITION_SKYMILL_REV:-}"
 cd "$(dirname "$0")"
+source ./fatline-qualification.sources
+for pair in \
+  "Agni branch:$requested_agni_branch:$COMPOSITION_AGNI_BRANCH" \
+  "Agni revision:$requested_agni_rev:$COMPOSITION_AGNI_REV" \
+  "Logma branch:$requested_logma_branch:$COMPOSITION_LOGMA_BRANCH" \
+  "Logma revision:$requested_logma_rev:$COMPOSITION_LOGMA_REV" \
+  "Skymill branch:$requested_skymill_branch:$COMPOSITION_SKYMILL_BRANCH" \
+  "Skymill revision:$requested_skymill_rev:$COMPOSITION_SKYMILL_REV"; do
+  IFS=: read -r label requested pinned <<< "$pair"
+  [[ -z "$requested" || "$requested" == "$pinned" ]] || {
+    echo "FAIL: $label override does not match fatline-qualification.sources" >&2
+    exit 2
+  }
+done
 make_with_context() {
   printf 'INFO: dispatcher make context scope=%s container=%s workspaces=%s target=%s\n' "$scope" "$container" "$workspaces" "$1" >&2
   command make SCOPE="$scope" CONTAINER="$container" WORKSPACES="$workspaces" "$@"

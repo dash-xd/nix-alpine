@@ -1,0 +1,7 @@
+# Shared immutable component pins consumed by GNU Make and Bash.
+COMPOSITION_AGNI_BRANCH=codex/fatline-scope-contract
+COMPOSITION_AGNI_REV=69c3c372062024c40c8cde1911cba35cd3040303
+COMPOSITION_LOGMA_BRANCH=codex/fatline-keyspace-v2
+COMPOSITION_LOGMA_REV=870c9f0c21796bb670cb6f1a142ca38fc21b653a
+COMPOSITION_SKYMILL_BRANCH=codex/scoped-requirements-qualification
+COMPOSITION_SKYMILL_REV=907346ecd74a4d39830347b2ea01dc2b1c6b8969

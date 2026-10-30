@@ -35,8 +35,8 @@ TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 REPO ?=
 BRANCH ?= main
-COMPOSITION_AGNI_BRANCH ?= codex/fatline-scope-contract
-COMPOSITION_AGNI_REV ?= 69c3c372062024c40c8cde1911cba35cd3040303
+# Shared component pins for local and Actions qualification.
+include $(dir $(realpath $(lastword $(MAKEFILE_LIST))))fatline-qualification.sources
 COMPOSITION_AGNI_CHECKOUT ?= agni-qualification
 SYNC_NAME ?=
 FATLINE_AGNI ?= $(WORKSPACES)/agni
@@ -47,11 +47,9 @@ COMPOSITION_REDIS_IMAGE ?= localhost/nix-alpine/redis:qualified-2026.10.23
 COMPOSITION_NGINX_IMAGE ?= localhost/nix-alpine/nginx:qualified-2026.10.23.1
 COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
 COMPOSITION_SKYMILL_IMAGE ?= localhost/skymill-provider:scoped-qualification
-COMPOSITION_SKYMILL_BRANCH ?= codex/scoped-requirements-qualification
-COMPOSITION_SKYMILL_REV ?= 907346ecd74a4d39830347b2ea01dc2b1c6b8969
+
 COMPOSITION_SKYMILL_CHECKOUT ?= .qualification-skymill-source
-COMPOSITION_LOGMA_BRANCH ?= codex/fatline-keyspace-v2
-COMPOSITION_LOGMA_REV ?= 870c9f0c21796bb670cb6f1a142ca38fc21b653a
+
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
 COMPOSITION_STRICT_READINESS_MODE ?= 0
