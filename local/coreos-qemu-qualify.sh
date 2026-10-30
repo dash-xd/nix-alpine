@@ -66,7 +66,7 @@ systemd-run --user --quiet --unit="$unit" --collect \
   --property=KillMode=mixed \
   --property=RuntimeMaxSec=15m \
   --property=TimeoutStopSec=20s \
-  -- "${podman_args[@]}" "$image_id" run \
+  -- podman "${podman_args[@]}" "$image_id" run \
     -machine q35 -accel "$qemu_accel" \
     -m "$ram_mb" -smp "$cpus" \
     -drive if=virtio,format=qcow2,file=/state/overlay.qcow2 \
