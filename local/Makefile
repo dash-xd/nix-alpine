@@ -585,18 +585,21 @@ COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
 COREOS_REUSE ?= 1
 
-.PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean
+.PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(LOG)" == 1 ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
+	  $(MAKE) coreos-qemu-host-preflight; \
 	  $(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
 	  $(MAKE) coreos-qemu-build; \
 	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)"; \
 	fi
+coreos-qemu-host-preflight:
+	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 coreos-qemu-build:
 	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)"
 coreos-qemu-clean:
