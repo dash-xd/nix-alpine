@@ -587,6 +587,7 @@ COREOS_QEMU_IMAGE ?= localhost/fatline-qemu-runner:44.20261012.3.1
 COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_REUSE ?= 1
+export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_REUSE
 
 .PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
 qualify-coreos-qemu:
@@ -594,7 +595,7 @@ qualify-coreos-qemu:
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then \
 	  case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; \
-	  web_port_num=$((10#$(COREOS_QEMU_WEB_PORT))); \
+	  web_port_num=$$((10#$(COREOS_QEMU_WEB_PORT))); \
 	  if (( web_port_num < 1024 || web_port_num > 65535 )); then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
 	fi
 	@if [[ "$(LOG)" == 1 ]]; then \
