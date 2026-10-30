@@ -583,6 +583,7 @@ COREOS_QEMU_TIMEOUT ?= 600
 COREOS_QEMU_RAM_MB ?= 3072
 COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
+COREOS_REUSE ?= 1
 
 .PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean
 qualify-coreos-qemu:
@@ -607,10 +608,13 @@ coreos-qemu-build:
 	  config_rel="$$(realpath --relative-to "$$workspace_root" "$$config_dir")"; \
 	  resource_rel="$$(realpath --relative-to "$$workspace_root" "$$resource_dir")"; \
 	  mkdir -p "$(COREOS_STATE)"; \
-	  output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
+	  build_key="$$(bash ./coreos-qemu-input-key.sh "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COMPOSITION_AGNI_REV)")"; \
+	  if [[ "$(COREOS_REUSE)" == 1 && -f "$(COREOS_STATE)/build-key" && -f "$(COREOS_STATE)/artifacts.sha256" ]] && [[ "$$(cat "$(COREOS_STATE)/build-key")" == "$$build_key" ]] && (cd "$(COREOS_STATE)" && sha256sum --check artifacts.sha256); then echo "PASS: reused checksum-verified CoreOS QEMU artifact bundle"; exit 0; fi; \
+	  output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
 	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
 	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
-	  sha256sum "$(COREOS_STATE)/base.qcow2" "$(COREOS_STATE)/config.ign" > "$(COREOS_STATE)/artifacts.sha256"; \
+	  (cd "$(COREOS_STATE)" && sha256sum base.qcow2 config.ign > artifacts.sha256); \
+	  printf "%s\n" "$$build_key" > "$(COREOS_STATE)/build-key"; \
 	  echo "PASS: pinned FCOS disk and workspace-composed Ignition artifact staged at $(COREOS_STATE)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
