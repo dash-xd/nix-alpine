@@ -7,7 +7,7 @@ accel="${1:-auto}"
   exit 2
 }
 
-for command in qemu-system-x86_64 qemu-img systemctl systemd-run; do
+for command in podman systemctl systemd-run; do
   command -v "$command" >/dev/null || {
     echo "Missing host command: $command" >&2
     exit 2
@@ -16,6 +16,11 @@ done
 
 systemctl --user show-environment >/dev/null || {
   echo "The systemd user manager is unavailable; start the user session before qualifying QEMU" >&2
+  exit 2
+}
+
+[[ "$(podman info --format '{{.Host.Security.Rootless}}')" == true ]] || {
+  echo "QEMU qualification requires rootless Podman" >&2
   exit 2
 }
 
@@ -32,4 +37,4 @@ if [[ "$accel" == auto ]]; then
   fi
 fi
 
-echo "PASS: QEMU host prerequisites available (acceleration=$accel)"
+echo "PASS: rootless Podman and systemd user manager are ready (QEMU acceleration=$accel)"
