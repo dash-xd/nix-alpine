@@ -575,6 +575,7 @@ ci-archive-import:
 # Fedora CoreOS QEMU qualification is built in Nix-Alpine and supervised by
 # a host systemd-user transient unit. Workspace Butane config/resources are
 # explicit, hashed Nix inputs; the guest runs rootful Podman under systemd.
+COREOS_MAKE ?= make
 COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
 COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
 COREOS_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/$(SCOPE)
@@ -599,15 +600,15 @@ qualify-coreos-qemu:
 	  if (( web_port_num < 1024 || web_port_num > 65535 )); then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
 	fi
 	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
-	  $(MAKE) coreos-qemu-host-preflight; \
-	  $(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
+	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
+	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
-	  $(MAKE) coreos-qemu-build; \
-	  $(MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
-	  $(MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	  $(COREOS_MAKE) coreos-qemu-build; \
+	  $(COREOS_MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	  $(COREOS_MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
 	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)"; \
 	fi
 coreos-qemu-host-preflight:
