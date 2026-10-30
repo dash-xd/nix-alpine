@@ -592,7 +592,11 @@ COREOS_REUSE ?= 1
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
-	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]] && ! [[ "$(COREOS_QEMU_WEB_PORT)" =~ ^[1-9][0-9]{0,4}$ ]] || { [[ "$(COREOS_QEMU_DISPLAY)" == web ]] && (( 10#$(COREOS_QEMU_WEB_PORT) < 1024 || 10#$(COREOS_QEMU_WEB_PORT) > 65535 )); }; then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then \
+	  case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; \
+	  web_port_num=$((10#$(COREOS_QEMU_WEB_PORT))); \
+	  if (( web_port_num < 1024 || web_port_num > 65535 )); then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
+	fi
 	@if [[ "$(LOG)" == 1 ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
