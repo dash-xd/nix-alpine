@@ -614,7 +614,7 @@ coreos-qemu-build:
 	  podman exec "$(CONTAINER)" git config --global --add safe.directory "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  podman exec "$(CONTAINER)" test -f "/workspaces/$config_rel/fatline-bootstrap.bu" || { echo "Butane configuration is not visible inside $(CONTAINER)" >&2; exit 1; }; \
 	  podman exec "$(CONTAINER)" test -d "/workspaces/$resource_rel" || { echo "Butane resources are not visible inside $(CONTAINER)" >&2; exit 1; }; \
-	  build_log="$(COREOS_STATE)/nix-build.log"; : > "$build_log"; \
+	  build_log="$(COREOS_STATE)/nix-build.log";  : > "$build_log"; \
 	  if ! output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build -L --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap" 2>"$$build_log")"; then \
 	    cat "$$build_log" >&2; \
 	    printf '%s\n' "$$output" >&2; \
