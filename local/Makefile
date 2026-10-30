@@ -598,34 +598,7 @@ qualify-coreos-qemu:
 	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)"; \
 	fi
 coreos-qemu-build:
-	@set -Eeuo pipefail; \
-	  test -f "$(COREOS_CONFIG_DIR)/fatline-bootstrap.bu" || { echo "Missing Butane config: $(COREOS_CONFIG_DIR)/fatline-bootstrap.bu" >&2; exit 2; }; \
-	  test -d "$(COREOS_RESOURCES)" || { echo "Missing Butane resource directory: $(COREOS_RESOURCES)" >&2; exit 2; }; \
-	  workspace_root="$$(realpath "$(WORKSPACES)")"; \
-	  config_dir="$$(realpath "$(COREOS_CONFIG_DIR)")"; \
-	  resource_dir="$$(realpath "$(COREOS_RESOURCES)")"; \
-	  case "$$config_dir/" in "$$workspace_root/"*) ;; *) echo "COREOS_CONFIG_DIR must be under WORKSPACES" >&2; exit 2;; esac; \
-	  case "$$resource_dir/" in "$$workspace_root/"*) ;; *) echo "COREOS_RESOURCES must be under WORKSPACES" >&2; exit 2;; esac; \
-	  config_rel="$$(realpath --relative-to "$$workspace_root" "$$config_dir")"; \
-	  resource_rel="$$(realpath --relative-to "$$workspace_root" "$$resource_dir")"; \
-	  mkdir -p "$(COREOS_STATE)"; \
-	  build_key="$$(bash ./coreos-qemu-input-key.sh "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COMPOSITION_AGNI_REV)")"; \
-	  if [[ "$(COREOS_REUSE)" == 1 && -f "$(COREOS_STATE)/build-key" && -f "$(COREOS_STATE)/artifacts.sha256" ]] && [[ "$$(cat "$(COREOS_STATE)/build-key")" == "$$build_key" ]] && (cd "$(COREOS_STATE)" && sha256sum --check artifacts.sha256); then echo "PASS: reused checksum-verified CoreOS QEMU artifact bundle"; exit 0; fi; \
-	  podman exec "$(CONTAINER)" git config --global --add safe.directory "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)"; \
-	  podman exec "$(CONTAINER)" test -f "/workspaces/$config_rel/fatline-bootstrap.bu" || { echo "Butane configuration is not visible inside $(CONTAINER)" >&2; exit 1; }; \
-	  podman exec "$(CONTAINER)" test -d "/workspaces/$resource_rel" || { echo "Butane resources are not visible inside $(CONTAINER)" >&2; exit 1; }; \
-	  build_log="$(COREOS_STATE)/nix-build.log";  : > "$build_log"; \
-	  if ! output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build -L --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap" 2>"$$build_log")"; then \
-	    cat "$$build_log" >&2; \
-	    printf '%s\n' "$$output" >&2; \
-	    exit 1; \
-	  fi; \
-	  cat "$$build_log"; \
-	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
-	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
-	  (cd "$(COREOS_STATE)" && sha256sum base.qcow2 config.ign > artifacts.sha256); \
-	  printf "%s\n" "$$build_key" > "$(COREOS_STATE)/build-key"; \
-	  echo "PASS: pinned FCOS disk and workspace-composed Ignition artifact staged at $(COREOS_STATE)"
+	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
