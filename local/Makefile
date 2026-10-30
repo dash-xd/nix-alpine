@@ -18,7 +18,6 @@ COMPONENT ?= logma
 NAME ?=
 WITH ?=
 COMPOSITIONS ?= $(WORKSPACES)/.compositions
-ASSEMBLY ?= agni/local/fatline
 HASH := \#
 RELEASE_VERSION ?=
 RELEASE_IMAGE ?=
@@ -36,10 +35,8 @@ TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 REPO ?=
 BRANCH ?= main
-FATLINE_REPO ?= dash-xd/agni
-FATLINE_BRANCH ?= codex/redis-isolated-qualification-artifact
 COMPOSITION_AGNI_BRANCH ?= codex/fatline-scope-contract
-COMPOSITION_AGNI_REV ?= cdf14ed2c88988dc7fd70a2cdb337f73b2cee4df
+COMPOSITION_AGNI_REV ?= 69c3c372062024c40c8cde1911cba35cd3040303
 COMPOSITION_AGNI_CHECKOUT ?= agni-qualification
 SYNC_NAME ?=
 FATLINE_AGNI ?= $(WORKSPACES)/agni
@@ -54,7 +51,7 @@ COMPOSITION_SKYMILL_BRANCH ?= codex/scoped-requirements-qualification
 COMPOSITION_SKYMILL_REV ?= 907346ecd74a4d39830347b2ea01dc2b1c6b8969
 COMPOSITION_SKYMILL_CHECKOUT ?= .qualification-skymill-source
 COMPOSITION_LOGMA_BRANCH ?= codex/fatline-keyspace-v2
-COMPOSITION_LOGMA_REV ?= 8445a1e889af3f157ef39e87a991745aed34e0fb
+COMPOSITION_LOGMA_REV ?= 9e1e5d9ff5ce43ba10538a717e63564f86e23425
 COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
 COMPOSITION_STRICT_READINESS_MODE ?= 0
@@ -67,7 +64,7 @@ LOG_NAME ?= $(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$
 QUADLET ?= 0
 QUADLET_PROVIDER_ENV = $(if $(filter 1,$(QUADLET)),COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1)
 QUALIFY_AGNI ?= $(WORKSPACES)/agni
-FATLINE_FLAKE ?= agni/local/fatline
+FATLINE_FLAKE ?= nix-alpine/release/components/nginx
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
 
@@ -91,7 +88,7 @@ help:
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
 	@echo "make inspect-inventory COMPONENT=fatline (host inventory; read-only)"
 	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
-	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|acl-isolation|cold-start LOG=1 (timestamped log + exit code)"
+	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|production-acl|strict-readiness LOG=1 (timestamped log + exit code)"
 	@echo "make qualify-composition-skymill-provider QUADLET=1 LOG=1 (Skymill against systemd Quadlets; timestamped log)"
 	@echo "make qualify-composition COMPOSITION=logma-image (sync, build and import Logma provider image; not release qualification)"
 	@echo "make qualify-composition COMPOSITION=skymill-provider (pinned Skymill provider integration)"
@@ -112,7 +109,7 @@ help:
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
-	@echo "make fatline-images (build/import Nix-Alpine Redis and Agni Nginx images; no activation)"
+	@echo "make fatline-images (build/import Nix-Alpine Redis and Nginx images; no activation)"
 	@echo "make compose NAME=fatline WITH=component@version... (Nix app; requires ledger mount; currently fails closed)"
 	@echo "make qualify-workspace REPO=dash-xd/agni BRANCH=branch FLAKE=agni/local/fatline COMPONENT=logma"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
@@ -187,11 +184,10 @@ qualify-component:
 # Reuse source synchronization and Nix artifact loading for Fatline's
 # infrastructure images. No registry, service installation, or activation.
 fatline-images:
-	@$(MAKE) sync REPO="$(FATLINE_REPO)" BRANCH="$(FATLINE_BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@$(MAKE) build FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
-	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
-	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#nginx-image' SCOPE="$(SCOPE)"
+	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
 
 # Container-first composition: Nix app owns release selection and assembly.
