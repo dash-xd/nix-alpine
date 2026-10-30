@@ -613,7 +613,12 @@ coreos-qemu-build:
 	  if [[ "$(COREOS_REUSE)" == 1 && -f "$(COREOS_STATE)/build-key" && -f "$(COREOS_STATE)/artifacts.sha256" ]] && [[ "$$(cat "$(COREOS_STATE)/build-key")" == "$$build_key" ]] && (cd "$(COREOS_STATE)" && sha256sum --check artifacts.sha256); then echo "PASS: reused checksum-verified CoreOS QEMU artifact bundle"; exit 0; fi; \
 	  podman exec "$(CONTAINER)" git config --global --add safe.directory "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)"; \
 
-	  output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
+	  if ! output="$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap" 2>&1)"; then \
+	    printf '%s\\n' "$output" >&2; \
+	    drv="$(printf '%s\\n' "$output" | sed -nE "s/^error: Cannot build '([^']+\\.drv)'.*/\\1/p" | head -n 1)"; \
+	    if [[ -n "$drv" ]]; then echo "=== Nix builder log: $drv ===" >&2; podman exec "$(CONTAINER)" nix log "$drv" >&2 || true; fi; \
+	    exit 1; \
+	  fi; \
 	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
 	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
 	  (cd "$(COREOS_STATE)" && sha256sum base.qcow2 config.ign > artifacts.sha256); \
