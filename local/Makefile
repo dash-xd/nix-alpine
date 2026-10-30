@@ -591,6 +591,7 @@ qualify-coreos-qemu:
 	@if [[ "$(LOG)" == 1 ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
+	  set -Eeuo pipefail; \
 	  $(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
 	  $(MAKE) coreos-qemu-build; \
@@ -610,6 +611,8 @@ coreos-qemu-build:
 	  mkdir -p "$(COREOS_STATE)"; \
 	  build_key="$$(bash ./coreos-qemu-input-key.sh "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COMPOSITION_AGNI_REV)")"; \
 	  if [[ "$(COREOS_REUSE)" == 1 && -f "$(COREOS_STATE)/build-key" && -f "$(COREOS_STATE)/artifacts.sha256" ]] && [[ "$$(cat "$(COREOS_STATE)/build-key")" == "$$build_key" ]] && (cd "$(COREOS_STATE)" && sha256sum --check artifacts.sha256); then echo "PASS: reused checksum-verified CoreOS QEMU artifact bundle"; exit 0; fi; \
+	  podman exec "$(CONTAINER)" git config --global --add safe.directory "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)"; \
+
 	  output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
 	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
 	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
