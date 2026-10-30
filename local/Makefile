@@ -81,7 +81,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
-	@echo "make qualify-coreos-qemu LOG=1 (pinned FCOS boot + transient Podman unit in QEMU; systemd-user)"
+	@echo "make qualify-coreos-qemu LOG=1 (pinned FCOS + Nix-built QEMU container; rootless Podman under transient systemd)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
@@ -583,6 +583,7 @@ COREOS_QEMU_TIMEOUT ?= 600
 COREOS_QEMU_RAM_MB ?= 3072
 COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
+COREOS_QEMU_IMAGE ?= localhost/fatline-qemu-runner:44.20261012.3.1
 COREOS_REUSE ?= 1
 
 .PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
@@ -596,7 +597,9 @@ qualify-coreos-qemu:
 	  $(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
 	  $(MAKE) coreos-qemu-build; \
-	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)"; \
+	  $(MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	  $(MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)"; \
 	fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
