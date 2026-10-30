@@ -32,6 +32,8 @@ if [[ "$accel" == kvm && ! ( -r /dev/kvm && -w /dev/kvm ) ]]; then
   echo "KVM requested but /dev/kvm is not accessible" >&2
   exit 2
 fi
+qemu_accel="$accel"
+if [[ "$accel" == tcg ]]; then qemu_accel="tcg,thread=multi"; fi
 
 mkdir -p "$state"
 systemctl --user stop "$unit.service" >/dev/null 2>&1 || true
@@ -45,7 +47,7 @@ systemd-run --user --quiet --unit="$unit" --collect \
   --property=KillMode=mixed \
   --property=RuntimeMaxSec=15m \
   -- qemu-system-x86_64 \
-    -machine "q35,accel=$accel" \
+    -machine q35 -accel "$qemu_accel" \
     -m "$ram_mb" -smp "$cpus" \
     -drive "if=virtio,format=qcow2,file=$overlay" \
     -fw_cfg "name=opt/com.coreos/config,file=$ignition" \
