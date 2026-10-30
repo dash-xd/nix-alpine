@@ -7,6 +7,7 @@ timeout_seconds="${3:-600}"
 ram_mb="${4:-3072}"
 cpus="${5:-2}"
 accel="${6:-auto}"
+state="$(realpath -m "$state")"
 
 base="$state/base.qcow2"
 ignition="$state/config.ign"

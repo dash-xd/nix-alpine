@@ -607,7 +607,7 @@ coreos-qemu-build:
 	  config_rel="$$(realpath --relative-to "$$workspace_root" "$$config_dir")"; \
 	  resource_rel="$$(realpath --relative-to "$$workspace_root" "$$resource_dir")"; \
 	  mkdir -p "$(COREOS_STATE)"; \
-	  output="$$(podman exec -e "COREOS_CONFIG_DIR=/workspaces/$$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
+	  output="$$(podman exec -e NIX_CONFIG -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" -e "COREOS_RESOURCES_DIR=/workspaces/$$resource_rel" "$(CONTAINER)" nix build --impure --no-write-lock-file --no-link --print-out-paths "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local#bootstrap")"; \
 	  podman cp "$(CONTAINER):$$output/." "$(COREOS_STATE)/"; \
 	  test -s "$(COREOS_STATE)/base.qcow2" && test -s "$(COREOS_STATE)/config.ign" || { echo "Nix-Alpine QEMU artifact copy was incomplete" >&2; exit 1; }; \
 	  sha256sum "$(COREOS_STATE)/base.qcow2" "$(COREOS_STATE)/config.ign" > "$(COREOS_STATE)/artifacts.sha256"; \
