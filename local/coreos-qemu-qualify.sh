@@ -10,6 +10,7 @@ accel="${6:-auto}"
 qemu_image="${7:?QEMU runtime image is required}"
 display="${8:-headless}"
 web_port="${9:-8006}"
+hold="${10:-0}"
 state="$(realpath -m "$state")"
 
 base="$state/base.qcow2"
@@ -27,6 +28,8 @@ done
 [[ "$unit" =~ ^[A-Za-z0-9_.@-]+$ ]] || { echo "Invalid transient unit name" >&2; exit 2; }
 [[ "$accel" == auto || "$accel" == kvm || "$accel" == tcg ]] || { echo "COREOS_QEMU_ACCEL must be auto, kvm, or tcg" >&2; exit 2; }
 [[ "$display" == headless || "$display" == web ]] || { echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; }
+[[ "$hold" == 0 || "$hold" == 1 ]] || { echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; }
+[[ "$hold" != 1 || "$display" == web ]] || { echo "COREOS_QEMU_HOLD=1 requires web display" >&2; exit 2; }
 if [[ "$display" == web ]]; then
   [[ "$web_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$web_port >= 1024 && 10#$web_port <= 65535 )) || {
     echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2
@@ -115,7 +118,20 @@ for ((i=0; i<timeout_seconds; i+=2)); do
     echo "Acceleration: $accel"
     echo "Serial log: $serial"
     if [[ "$display" == web ]]; then
-      echo "QEMU browser console was available at http://127.0.0.1:${web_port}/vnc.html?autoconnect=true&resize=scale during qualification"
+      echo "QEMU browser console: http://127.0.0.1:${web_port}/vnc.html?autoconnect=true&resize=scale"
+    fi
+    if [[ "$hold" == 1 ]]; then
+      echo "Interactive console is holding the guest. Stop it from another terminal with:"
+      echo "systemctl --user stop $unit.service"
+      for ((hold_i=0; hold_i<timeout_seconds; hold_i+=2)); do
+        if ! systemctl --user is-active --quiet "$unit.service"; then
+          echo "PASS: interactive guest stopped after the qualification smoke"
+          exit 0
+        fi
+        sleep 2
+      done
+      echo "FAIL: interactive guest exceeded COREOS_QEMU_TIMEOUT" >&2
+      exit 1
     fi
     exit 0
   fi
