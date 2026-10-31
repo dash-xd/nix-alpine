@@ -103,6 +103,7 @@ cleanup() {
   systemctl --user stop "$unit.service" >/dev/null 2>&1 || true
   podman rm --force "$container_name" >/dev/null 2>&1 || true
   systemctl --user reset-failed "$unit.service" >/dev/null 2>&1 || true
+  rm -f "$overlay"
 }
 trap cleanup EXIT
 
