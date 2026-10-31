@@ -6,8 +6,10 @@ agni_dir="${1:?Agni source directory required}"
 config_dir="${2:?Butane config directory required}"
 resources_dir="${3:?Butane resources directory required}"
 agni_rev="${4:?Agni revision required}"
+config_name="${5:-fatline-bootstrap.bu}"
 
 [[ "$agni_rev" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid Agni revision" >&2; exit 2; }
+[[ "$config_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.bu$ ]] || { echo "Invalid Butane config name" >&2; exit 2; }
 for path in "$agni_dir" "$config_dir" "$resources_dir"; do
   test -d "$path" || { echo "Not a directory: $path" >&2; exit 2; }
 done
