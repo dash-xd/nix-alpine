@@ -1,6 +1,6 @@
 # Shared immutable component pins consumed by GNU Make and Bash.
 COMPOSITION_AGNI_BRANCH=codex/coreos-fatline-qemu
-COMPOSITION_AGNI_REV=d7eaf6c2e8267b1a01c5edfc149e0018f5a8c75c
+COMPOSITION_AGNI_REV=47b237e68d6f17900593ce0ae9fdd1e06d42c991
 COMPOSITION_LOGMA_BRANCH=codex/fatline-keyspace-v2
 COMPOSITION_LOGMA_REV=870c9f0c21796bb670cb6f1a142ca38fc21b653a
 COMPOSITION_SKYMILL_BRANCH=codex/scoped-requirements-qualification
