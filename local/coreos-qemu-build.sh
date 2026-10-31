@@ -9,6 +9,7 @@ config_input="${5:?Butane config directory is required}"
 resources_input="${6:?Butane resources directory is required}"
 state="${7:?CoreOS state directory is required}"
 reuse="${8:-1}"
+config_name="${9:-fatline-bootstrap.bu}"
 
 workspace_root="$(realpath "$workspaces")"
 agni_dir="$(realpath "$workspaces/$agni_checkout")"
@@ -23,8 +24,12 @@ for pair in "Agni checkout:$agni_dir" "Butane config:$config_dir" "Butane resour
     exit 2
   }
 done
-test -f "$config_dir/fatline-bootstrap.bu" || {
-  echo "Missing Butane config: $config_dir/fatline-bootstrap.bu" >&2
+[[ "$config_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.bu$ ]] || {
+  echo "Invalid COREOS_CONFIG_NAME: $config_name" >&2
+  exit 2
+}
+test -f "$config_dir/$config_name" || {
+  echo "Missing Butane config: $config_dir/$config_name" >&2
   exit 2
 }
 test -d "$resources_dir" || {
@@ -44,8 +49,8 @@ config_rel="$(realpath --relative-to "$workspace_root" "$config_dir")"
 resources_rel="$(realpath --relative-to "$workspace_root" "$resources_dir")"
 mkdir -p "$state"
 
-podman exec "$container" test -f "/workspaces/$config_rel/fatline-bootstrap.bu" || {
-  echo "Butane config is not visible inside toolbox at /workspaces/$config_rel" >&2
+podman exec "$container" test -f "/workspaces/$config_rel/$config_name" || {
+  echo "Butane config is not visible inside toolbox at /workspaces/$config_rel/$config_name" >&2
   exit 2
 }
 podman exec "$container" test -d "/workspaces/$resources_rel" || {
@@ -53,7 +58,7 @@ podman exec "$container" test -d "/workspaces/$resources_rel" || {
   exit 2
 }
 
-build_key="$(bash "$(dirname "$0")/coreos-qemu-input-key.sh" "$agni_dir" "$config_dir" "$resources_dir" "$agni_rev")"
+build_key="$(bash "$(dirname "$0")/coreos-qemu-input-key.sh" "$agni_dir" "$config_dir" "$resources_dir" "$agni_rev" "$config_name")"
 if [[ "$reuse" == 1 && -f "$state/build-key" && -f "$state/artifacts.sha256" ]] &&
   [[ "$(cat "$state/build-key")" == "$build_key" ]] &&
   (cd "$state" && sha256sum --check artifacts.sha256); then
@@ -71,6 +76,7 @@ fi
 
 if ! output="$("${podman_exec[@]}" \
   -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" \
+  -e "COREOS_CONFIG_NAME=$config_name" \
   -e "COREOS_RESOURCES_DIR=/workspaces/$resources_rel" \
   "$container" nix build -L --impure --no-write-lock-file --no-link --print-out-paths \
   "/workspaces/$agni_checkout/qemu/coreos-live/local#bootstrap" 2>"$build_log")"; then
