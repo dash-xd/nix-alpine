@@ -81,7 +81,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
-	@echo "make qualify-coreos-qemu COREOS_QEMU_DISPLAY=headless|web COREOS_QEMU_CONSOLE_LOGIN=0|1 LOG=1 (FCOS/QEMU; Podman under transient systemd)"
+	@echo "make qualify-coreos-qemu COREOS_QEMU_DISPLAY=headless|web COREOS_QEMU_CONSOLE_LOGIN=0|1 COREOS_QEMU_HOLD=0|1 LOG=1 (FCOS/QEMU; Podman under transient systemd)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
@@ -588,9 +588,10 @@ COREOS_QEMU_IMAGE ?= localhost/fatline-qemu-runner:44.20261012.3.1
 COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_QEMU_CONSOLE_LOGIN ?= 0
+COREOS_QEMU_HOLD ?= 0
 COREOS_CONFIG_NAME ?= $(if $(filter 1,$(COREOS_QEMU_CONSOLE_LOGIN)),fatline-bootstrap-console.bu,fatline-bootstrap.bu)
 COREOS_REUSE ?= 1
-export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_REUSE
+export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_REUSE
 
 .PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
 qualify-coreos-qemu:
@@ -598,6 +599,8 @@ qualify-coreos-qemu:
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" == 1 && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN=1 requires COREOS_QEMU_DISPLAY=web" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_HOLD)" != 0 && "$(COREOS_QEMU_HOLD)" != 1 ]]; then echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires COREOS_QEMU_CONSOLE_LOGIN=1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then \
 	  case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; \
 	  web_port_num=$$((10#$(COREOS_QEMU_WEB_PORT))); \
@@ -613,7 +616,7 @@ qualify-coreos-qemu:
 	  $(COREOS_MAKE) coreos-qemu-build; \
 	  $(COREOS_MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
 	  $(COREOS_MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
-	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)"; \
+	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)"; \
 	fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
