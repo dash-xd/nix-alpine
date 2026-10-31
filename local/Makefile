@@ -600,7 +600,7 @@ qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
-	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
+	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" == 1 && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN=1 requires COREOS_QEMU_DISPLAY=web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" != 0 && "$(COREOS_QEMU_HOLD)" != 1 ]]; then echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires COREOS_QEMU_CONSOLE_LOGIN=1" >&2; exit 2; fi
