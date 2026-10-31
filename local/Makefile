@@ -574,7 +574,8 @@ ci-archive-import:
 
 # Fedora CoreOS QEMU qualification is built in Nix-Alpine and supervised by
 # a host systemd-user transient unit. Workspace Butane config/resources are
-# explicit, hashed Nix inputs; the guest runs rootful Podman under systemd.
+# explicit, hashed Nix inputs; guest checks root bootstrap and optional
+# generated-user rootless Podman under systemd.
 COREOS_MAKE ?= make
 COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
 COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
