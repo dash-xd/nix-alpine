@@ -16,6 +16,7 @@ done
 
 {
   printf 'agni=%s\n' "$agni_rev"
+  printf 'config=%s\n' "$config_name"
   for path in "$config_dir" "$resources_dir"; do
     if find "$path" -type l -print -quit | grep -q .; then
       echo "Symlinks are not allowed in Butane inputs: $path" >&2
