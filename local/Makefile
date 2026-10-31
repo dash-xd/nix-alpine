@@ -590,15 +590,17 @@ COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_QEMU_CONSOLE_LOGIN ?= 0
 COREOS_QEMU_HOLD ?= 0
+COREOS_COMPOSITION_NAME ?= $(COMPOSITION)
 COREOS_CONFIG_NAME ?= $(if $(filter 1,$(COREOS_QEMU_CONSOLE_LOGIN)),fatline-bootstrap-console.bu,fatline-bootstrap.bu)
 COREOS_REUSE ?= 1
-export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_REUSE
+export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_COMPOSITION_NAME COREOS_REUSE
 
 .PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
+	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" == 1 && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN=1 requires COREOS_QEMU_DISPLAY=web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" != 0 && "$(COREOS_QEMU_HOLD)" != 1 ]]; then echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires COREOS_QEMU_CONSOLE_LOGIN=1" >&2; exit 2; fi
@@ -622,7 +624,7 @@ qualify-coreos-qemu:
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 coreos-qemu-build:
-	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)"
+	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true

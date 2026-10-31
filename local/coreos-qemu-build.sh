@@ -10,6 +10,7 @@ resources_input="${6:?Butane resources directory is required}"
 state="${7:?CoreOS state directory is required}"
 reuse="${8:-1}"
 config_name="${9:-fatline-bootstrap.bu}"
+composition_name="${10:-fatline}"
 
 workspace_root="$(realpath "$workspaces")"
 agni_dir="$(realpath "$workspaces/$agni_checkout")"
@@ -40,6 +41,10 @@ test -d "$resources_dir" || {
   echo "Invalid pinned Agni revision: $agni_rev" >&2
   exit 2
 }
+[[ "$composition_name" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]] || {
+  echo "COREOS_COMPOSITION_NAME must be a lowercase account prefix of at most 19 characters" >&2
+  exit 2
+}
 [[ "$reuse" == 0 || "$reuse" == 1 ]] || {
   echo "COREOS_REUSE must be 0 or 1" >&2
   exit 2
@@ -58,7 +63,7 @@ podman exec "$container" test -d "/workspaces/$resources_rel" || {
   exit 2
 }
 
-build_key="$(bash "$(dirname "$0")/coreos-qemu-input-key.sh" "$agni_dir" "$config_dir" "$resources_dir" "$agni_rev" "$config_name")"
+build_key="$(bash "$(dirname "$0")/coreos-qemu-input-key.sh" "$agni_dir" "$config_dir" "$resources_dir" "$agni_rev" "$config_name" "$composition_name")"
 if [[ "$reuse" == 1 && -f "$state/build-key" && -f "$state/artifacts.sha256" ]] &&
   [[ "$(cat "$state/build-key")" == "$build_key" ]] &&
   (cd "$state" && sha256sum --check artifacts.sha256); then
@@ -78,6 +83,7 @@ if ! output="$("${podman_exec[@]}" \
   -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" \
   -e "COREOS_CONFIG_NAME=$config_name" \
   -e "COREOS_RESOURCES_DIR=/workspaces/$resources_rel" \
+  -e "COREOS_COMPOSITION_NAME=$composition_name" \
   "$container" nix build -L --impure --no-write-lock-file --no-link --print-out-paths \
   "/workspaces/$agni_checkout/qemu/coreos-live/local#bootstrap" 2>"$build_log")"; then
   cat "$build_log" >&2

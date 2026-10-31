@@ -7,9 +7,11 @@ config_dir="${2:?Butane config directory required}"
 resources_dir="${3:?Butane resources directory required}"
 agni_rev="${4:?Agni revision required}"
 config_name="${5:-fatline-bootstrap.bu}"
+composition_name="${6:-fatline}"
 
 [[ "$agni_rev" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid Agni revision" >&2; exit 2; }
 [[ "$config_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.bu$ ]] || { echo "Invalid Butane config name" >&2; exit 2; }
+[[ "$composition_name" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]] || { echo "Invalid composition account prefix" >&2; exit 2; }
 for path in "$agni_dir" "$config_dir" "$resources_dir"; do
   test -d "$path" || { echo "Not a directory: $path" >&2; exit 2; }
 done
@@ -17,6 +19,7 @@ done
 {
   printf 'agni=%s\n' "$agni_rev"
   printf 'config=%s\n' "$config_name"
+  printf 'composition=%s\n' "$composition_name"
   for path in "$config_dir" "$resources_dir"; do
     if find "$path" -type l -print -quit | grep -q .; then
       echo "Symlinks are not allowed in Butane inputs: $path" >&2
