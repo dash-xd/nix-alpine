@@ -50,6 +50,9 @@ image_id="$(podman image inspect "$qemu_image" --format '{{.Id}}')" || {
   echo "QEMU runtime image is not loaded: $qemu_image" >&2
   exit 2
 }
+if [[ "$image_id" =~ ^[a-f0-9]{64}$ ]]; then
+  image_id="sha256:$image_id"
+fi
 [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]] || {
   echo "Unexpected Podman image ID: $image_id" >&2
   exit 2
