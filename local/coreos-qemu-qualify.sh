@@ -86,7 +86,7 @@ systemd-run --user --quiet --unit="$unit" --collect \
   --property="Description=Fatline CoreOS QEMU Podman bootstrap qualification" \
   --property=Restart=no \
   --property=KillMode=mixed \
-  --property=RuntimeMaxSec=15m \
+  --property="RuntimeMaxSec=$((timeout_seconds + 60))s" \
   --property=TimeoutStopSec=20s \
   -- podman "${podman_args[@]}" "$image_id" "$qemu_command" \
     -machine q35 -accel "$qemu_accel" \
