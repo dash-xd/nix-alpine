@@ -42,8 +42,21 @@ generate_identity() {
 
 app_user="$(generate_identity astrochicken "$state_dir/app-user" /usr/sbin/nologin "" /etc/astrochicken/app-skel)"
 app_home="/var/home/$app_user"
+app_uid="$(/usr/bin/id -u "$app_user")"
 chown "$app_user:$app_user" "$app_home"
 chmod 0750 "$app_home"
+[[ "$(/usr/bin/stat -c %u "$app_home")" == "$app_uid" ]] || {
+  echo "Astrochicken service home has unexpected ownership" >&2
+  exit 1
+}
+for path in "$app_home/.local" "$app_home/.local/share" \
+  "$app_home/.local/share/containers" "$app_home/.local/share/containers/storage"; do
+  install -d -o "$app_user" -g "$app_user" -m 0700 "$path"
+done
+/usr/sbin/runuser -u "$app_user" -- /usr/bin/test -w "$app_home/.local/share/containers/storage" || {
+  echo "Astrochicken service user cannot write its rootless Podman storage" >&2
+  exit 1
+}
 install -d -o "$app_user" -g "$app_user" -m 0750 "$app_home/workspaces"
 install -d -o "$app_user" -g "$app_user" -m 0750 "$app_home/workspaces/astrochicken-flake"
 install -d -o "$app_user" -g "$app_user" -m 0700 "$app_home/.local/state/nix-alpine/releases"
