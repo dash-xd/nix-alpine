@@ -127,9 +127,9 @@ cleanup() {
 trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
-  if grep -Eq 'FAIL: Astrochicken bootstrap (exited with status|command failed at line)' "$serial" 2>/dev/null; then
-    echo "FAIL: Astrochicken guest bootstrap script reported an error" >&2
-    tail -n 200 "$serial" >&2
+  if grep -Fq 'COREOS_QEMU_STATUS=FAIL' "$serial" 2>/dev/null; then
+    echo "FAIL: Fedora CoreOS guest reported a bootstrap failure" >&2
+    tail -n 240 "$serial" >&2
     exit 1
   fi
   if grep -Eq 'Ignition has failed|Entering emergency mode|failed to acquire config|config is not valid' "$serial" 2>/dev/null; then
@@ -141,28 +141,16 @@ for ((i=0; i<timeout_seconds; i+=2)); do
     echo "CHECK: waiting for Fedora CoreOS qualification marker (${i}s elapsed)"
     tail -n 3 "$serial" 2>/dev/null || true
   fi
-  # Some compositions report only their own downstream marker on ttyS0.
-  # Requiring the generic marker first would make those valid guest smokes time out.
-  if { [[ -n "$expected_marker" ]] && grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; } || \
-     { [[ -z "$expected_marker" ]] && grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; }; then
+  if grep -Fq 'COREOS_QEMU_STATUS=PASS' "$serial" 2>/dev/null; then
+    if [[ -n "$expected_marker" ]] && ! grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; then
+      echo "FAIL: CoreOS reported success without the requested guest qualification marker: $expected_marker" >&2
+      tail -n 240 "$serial" >&2
+      exit 1
+    fi
     if [[ -n "$expected_marker" ]]; then
-      if grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; then
-        echo "PASS: Fedora CoreOS bootstrap and requested guest qualification marker"
-      else
-        echo "FAIL: requested guest qualification marker is missing: $expected_marker" >&2
-        tail -n 160 "$serial" >&2
-        exit 1
-      fi
-    elif grep -Fq "PASS: generated composition user's systemd unit ran rootless Podman" "$serial" 2>/dev/null; then
-      if grep -Fq "PASS: generated local login is read-only outside its workspace" "$serial" 2>/dev/null; then
-        echo "PASS: Fedora CoreOS root bootstrap, composition rootless Podman, and read-only local console login"
-      else
-        echo "FAIL: local console read-only qualification marker is missing" >&2
-        tail -n 160 "$serial" >&2
-        exit 1
-      fi
+      echo "PASS: Fedora CoreOS bootstrap and requested guest qualification marker"
     else
-      echo "PASS: Fedora CoreOS root Podman system bootstrap"
+      echo "PASS: Fedora CoreOS guest qualification result"
     fi
     echo "Host transient systemd unit: $unit.service"
     echo "QEMU Podman image: $image_id"
