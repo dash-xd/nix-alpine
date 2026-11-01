@@ -127,6 +127,15 @@ cleanup() {
 trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
+  if grep -Eq 'Ignition has failed|Entering emergency mode|failed to acquire config|config is not valid' "$serial" 2>/dev/null; then
+    echo "FAIL: Fedora CoreOS entered Ignition emergency mode" >&2
+    tail -n 160 "$serial" >&2
+    exit 1
+  fi
+  if (( i > 0 && i % 30 == 0 )); then
+    echo "CHECK: waiting for Fedora CoreOS qualification marker (${i}s elapsed)"
+    tail -n 3 "$serial" 2>/dev/null || true
+  fi
   if grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; then
     if [[ -n "$expected_marker" ]]; then
       if grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; then
