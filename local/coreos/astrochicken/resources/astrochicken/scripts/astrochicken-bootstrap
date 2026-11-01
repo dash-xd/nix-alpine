@@ -83,7 +83,11 @@ fi
 as_app /usr/bin/systemctl --user restart nix-alpine-astrochicken.service
 as_app /usr/bin/systemctl --user is-active --quiet nix-alpine-astrochicken.service
 as_app /usr/bin/systemctl --user start astrochicken-smoke.service
-test "$(/usr/bin/podman exec nix-alpine-astrochicken cat /nix/.astrochicken-store-write.pass)" = persistent-nix-store || {
+store_marker="$(as_app /usr/bin/podman exec nix-alpine-astrochicken cat /nix/.astrochicken-store-write.pass)" || {
+  echo "Astrochicken rootless Podman could not read the Nix store marker after service restart" >&2
+  exit 1
+}
+[[ "$store_marker" == persistent-nix-store ]] || {
   echo "Astrochicken Nix store did not persist across service restart" >&2
   exit 1
 }
