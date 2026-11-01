@@ -29,8 +29,12 @@ the mounted workspace is writable, a flake in that workspace evaluates, and
 the named Nix store persists across a service restart. It does not start a
 transient guest test service or claim Fatline application qualification.
 
-The pinned Nix-Alpine source is archived from its clean Git revision and
-included in Ignition so the guest can build its toolbox. Additional local
+The host Make target invokes the toolbox flake's `astrochicken-inputs` app;
+resource assembly and Butane generation run inside Nix-Alpine. The pinned
+Nix-Alpine source is archived from its clean Git revision and included in
+Ignition so the guest can build its toolbox. The QEMU artifact build also runs
+inside the toolbox and writes into a scoped state directory shared with the
+host. Host Make then starts QEMU through Podman and systemd. Additional local
 workspace files can be embedded with `COREOS_ASTROCHICKEN_WORKSPACE_FILES`, a
 space-separated list of paths relative to `WORKSPACES`. Files are copied into
 the guest workspace at the same relative paths and visible in the container
@@ -44,7 +48,12 @@ make qualify-coreos-astrochicken \
 
 Inputs must be regular files beneath `WORKSPACES`; symlinks and path traversal
 are rejected. The generated Butane document and resource bundle are
-content-hashed by the existing QEMU artifact builder.
+content-hashed by the toolbox QEMU artifact builder.
+
+The qualification target checks that the persistent toolbox has the scoped
+CoreOS state bind mount and refreshes the toolbox with `make bootstrap` if the
+mount is missing or points somewhere else. This also makes a fresh Makefile
+revision usable without a separate manual mount setup step.
 
 Smoke's `astrochicken-xd-run` remains a distinct named Smoke composition. It
 pins and seeds Agni Probe and its other profile tools into a Smoke environment;

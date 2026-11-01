@@ -8,6 +8,7 @@ SCOPE="${SCOPE:-dev}"
 IMAGE="${IMAGE:-localhost/nix.xd:latest}"
 REPO="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 RELEASE_STATE="${RELEASE_STATE:-$HOME/.local/state/nix-alpine/releases}"
+STATE_ROOT="${STATE_ROOT:-$HOME/.local/state/nix-alpine/coreos-qemu}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 CONTAINER="nix-alpine-$SCOPE"
 VOLUME="$CONTAINER-store"
@@ -19,8 +20,9 @@ for cmd in git podman systemctl realpath; do command -v "$cmd" >/dev/null || die
 [[ "$SCOPE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "Invalid scope"
 for f in nix-alpine-store.volume nix-alpine.container; do test -f "$SCRIPT_DIR/quadlet/$f" || die "Missing template $f"; done
 
-mkdir -p "$WORKSPACES" "$QUADLET_DIR" "$RELEASE_STATE"
+mkdir -p "$WORKSPACES" "$QUADLET_DIR" "$RELEASE_STATE" "$STATE_ROOT"
 RELEASE_STATE="$(realpath "$RELEASE_STATE")"
+STATE_ROOT="$(realpath "$STATE_ROOT")"
 WORKSPACES="$(realpath "$WORKSPACES")"
 [[ "$WORKSPACES" != *[[:space:]]* ]] || die "Workspace path cannot contain whitespace"
 [[ -f "$REPO/Dockerfile" ]] || die "Missing Dockerfile in $REPO"
@@ -36,6 +38,7 @@ render() {
   content="${content//@VOLUME@/$VOLUME}"
   content="${content//@WORKSPACES@/$WORKSPACES}"
   content="${content//@RELEASE_STATE@/$RELEASE_STATE}"
+  content="${content//@STATE_ROOT@/$STATE_ROOT}"
   printf '%s\n' "$content" > "$2"
 }
 log "Installing Quadlets"

@@ -33,6 +33,8 @@ PACKAGE ?= ./...
 CGO ?= 0
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
+NIX_ALPINE_CHECKOUT ?= $(notdir $(abspath ..))
+NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/toolbox
 REPO ?=
 BRANCH ?= main
 # Shared component pins for local and Actions qualification.
@@ -321,7 +323,8 @@ qualify-composition-acl-isolation:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
 	@if [[ "$(COMPOSITION_PRODUCTION_ACL_MODE)" == 1 ]]; then \
-	  python3 ./check-fatline-acl-pins.py "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/local/fatline/acl-policy.json" "$(COMPOSITION_LOGMA_REV)" "$(COMPOSITION_SKYMILL_REV)"; \
+	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "$(NIX_ALPINE_TOOLBOX_FLAKE)#check-fatline-acl-pins" -- \
+	    "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/local/fatline/acl-policy.json" "$(COMPOSITION_LOGMA_REV)" "$(COMPOSITION_SKYMILL_REV)"; \
 	fi
 	@COMPOSITION_AGNI_RECONCILE_MODE="$(COMPOSITION_PRODUCTION_ACL_MODE)" COMPOSITION_ACL_ISOLATION_MODE=1 $(QUADLET_PROVIDER_ENV) COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
 
@@ -404,7 +407,7 @@ test-workspace-race:
 	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
 bootstrap:
-	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" RELEASE_STATE="$(RELEASE_STATE)" bash ./bootstrap.sh
+	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
 uninstall:
 	SCOPE="$(SCOPE)" bash ./uninstall.sh
 start:
@@ -583,6 +586,7 @@ COREOS_MAKE ?= make
 COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
 COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
 COREOS_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/$(SCOPE)
+COREOS_STATE_ROOT ?= $(HOME)/.local/state/nix-alpine/coreos-qemu
 COREOS_UNIT ?= fatline-coreos-qemu-$(SCOPE)
 COREOS_QEMU_TIMEOUT ?= 600
 COREOS_QEMU_RAM_MB ?= 3072
@@ -599,7 +603,7 @@ COREOS_COMPOSITION_NAME ?= $(COMPOSITION)
 COREOS_QEMU_EXPECT_MARKER ?=
 COREOS_CONFIG_NAME ?= $(if $(filter 1,$(COREOS_QEMU_CONSOLE_LOGIN)),fatline-bootstrap-console.bu,fatline-bootstrap.bu)
 COREOS_REUSE ?= 1
-export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_QEMU_TRANSIENT_TESTER COREOS_QEMU_SSH_PORT COREOS_COMPOSITION_NAME COREOS_QEMU_EXPECT_MARKER COREOS_REUSE COREOS_TEST_SSH_PUBLIC_KEY
+export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_STATE_ROOT COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_QEMU_TRANSIENT_TESTER COREOS_QEMU_SSH_PORT COREOS_COMPOSITION_NAME COREOS_QEMU_EXPECT_MARKER COREOS_REUSE COREOS_TEST_SSH_PUBLIC_KEY
 
 # The same transient guest harness is used against QEMU's forwarded SSH port
 # and a GCP/IAP local tunnel. SSH is test transport only; it is never in the
@@ -613,7 +617,7 @@ COREOS_GUEST_RUNTIME ?= 10m
 COREOS_GUEST_PAYLOAD ?= ./coreos-guest-transient-smoke.sh
 export COREOS_GUEST_SSH_USER
 
-.PHONY: qualify-coreos-qemu qualify-coreos-astrochicken clean-coreos-astrochicken qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
+.PHONY: qualify-coreos-qemu qualify-coreos-astrochicken clean-coreos-astrochicken qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
@@ -637,6 +641,7 @@ qualify-coreos-qemu:
 	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
+	  $(COREOS_MAKE) ensure-coreos-state-mount; \
 	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
 	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
@@ -657,8 +662,20 @@ qualify-coreos-guest-transient:
 	else bash ./coreos-guest-transient-qualify.sh "$(COREOS_GUEST_HOST)" "$(COREOS_GUEST_PORT)" "$(COREOS_GUEST_KEY)" "$(COREOS_GUEST_COMPOSITION)" "$(COREOS_GUEST_RUNTIME)" "$(COREOS_GUEST_PAYLOAD)"; fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
+ensure-coreos-state-mount:
+	@set -euo pipefail; \
+	  expected="$(realpath -m "$(COREOS_STATE_ROOT)")"; \
+	  actual="$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
+	  running="$(podman inspect "$(CONTAINER)" --format '{{.State.Running}}' 2>/dev/null || true)"; \
+	  if [[ "$actual" != "$expected" || "$running" != true ]]; then \
+	    echo "Refreshing toolbox to mount scoped CoreOS build state"; \
+	    $(COREOS_MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" STATE_ROOT="$(COREOS_STATE_ROOT)"; \
+	  fi; \
+	  actual="$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}')"; \
+	  [[ "$actual" == "$expected" ]] || { echo "Toolbox is missing the expected CoreOS state mount" >&2; exit 1; }
 coreos-qemu-build:
-	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)"
+	@$(COREOS_MAKE) ensure-coreos-state-mount
+	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
@@ -683,7 +700,9 @@ qualify-coreos-astrochicken:
 	else \
 	  set -Eeuo pipefail; \
 	  bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"; \
-	  bash ./coreos-astrochicken-inputs.sh "$(WORKSPACES)" "$(COREOS_ASTROCHICKEN_SOURCE_DIR)" "$(COREOS_ASTROCHICKEN_SOURCE_REV)" "$(COREOS_ASTROCHICKEN_RESOURCES)" "$(COREOS_ASTROCHICKEN_WORKSPACE_FILES)" "$(COREOS_QEMU_CONSOLE_LOGIN)"; \
+	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "$(NIX_ALPINE_TOOLBOX_FLAKE)#astrochicken-inputs" -- \
+	    /workspaces "/workspaces/$(patsubst $(WORKSPACES)/%,%,$(COREOS_ASTROCHICKEN_SOURCE_DIR))" "$(COREOS_ASTROCHICKEN_SOURCE_REV)" \
+	    "/workspaces/$(patsubst $(WORKSPACES)/%,%,$(COREOS_ASTROCHICKEN_RESOURCES))" "$(COREOS_ASTROCHICKEN_WORKSPACE_FILES)" "$(COREOS_QEMU_CONSOLE_LOGIN)"; \
 	  $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu \
 	    COREOS_CONFIG_DIR="$(COREOS_ASTROCHICKEN_RESOURCES)" \
 	    COREOS_RESOURCES="$(COREOS_ASTROCHICKEN_RESOURCES)" \

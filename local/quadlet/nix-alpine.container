@@ -1,6 +1,6 @@
 [Unit]
 Description=Nix-Alpine build workspace (@SCOPE@)
-RequiresMountsFor=@WORKSPACES@
+RequiresMountsFor=@WORKSPACES@ @STATE_ROOT@
 
 [Container]
 ContainerName=@CONTAINER@
@@ -8,6 +8,7 @@ Image=@IMAGE@
 Pull=never
 Volume=@VOLUME@:/nix
 Volume=@WORKSPACES@:/workspaces:rw
+Volume=@STATE_ROOT@:/run/nix-alpine/coreos-qemu:rw
 Volume=@RELEASE_STATE@:/run/nix-alpine/releases:ro
 WorkingDir=/workspaces
 Environment=HOME=/home/nixuser
