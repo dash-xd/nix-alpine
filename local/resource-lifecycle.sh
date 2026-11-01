@@ -39,12 +39,12 @@ collect_resources() {
       done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
       ;;
     containers)
-      while IFS=$'\t' read -r name state; do
+      while read -r name state; do
         [[ -n "$name" ]] || continue
         matches_prefix "$name" || continue
         names+=("$name")
         details["$name"]="$state"
-      done < <(podman ps -a --format '{{.Names}}\t{{.State}}')
+      done < <(podman ps -a --format '{{.Names}} {{.State}}')
       ;;
     networks)
       while IFS= read -r name; do
@@ -55,12 +55,12 @@ collect_resources() {
       done < <(podman network ls --format '{{.Name}}')
       ;;
     images)
-      while IFS=$'\t' read -r ref image_id; do
+      while read -r ref image_id; do
         [[ -n "$ref" ]] || continue
         matches_prefix "$ref" || continue
         names+=("$ref")
         details["$ref"]="$image_id"
-      done < <(podman images --no-trunc --format '{{.Repository}}:{{.Tag}}\t{{.ID}}')
+      done < <(podman images --no-trunc --format '{{.Repository}}:{{.Tag}} {{.ID}}')
       ;;
     volumes)
       while IFS= read -r name; do
