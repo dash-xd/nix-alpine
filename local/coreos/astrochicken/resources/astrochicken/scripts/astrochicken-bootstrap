@@ -146,3 +146,4 @@ store_marker="$(as_app /usr/bin/podman exec nix-alpine-astrochicken cat /nix/.as
 rm -f "$marker"
 echo "PASS: Astrochicken CoreOS bootstrap started rootless user service $app_user" >/dev/ttyS0
 echo "PASS: Nix-Alpine Quadlet, writable workspace mount, mounted flake evaluation, and persistent Nix store" >/dev/ttyS0
+echo "COREOS_QEMU_STATUS=PASS profile=astrochicken" >/dev/ttyS0
