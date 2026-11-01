@@ -1,0 +1,63 @@
+#!/usr/bin/bash
+set -Eeuo pipefail
+
+state_dir=/var/lib/astrochicken
+install -d -m 0700 "$state_dir"
+generate_identity() {
+  local prefix="$1" state_file="$2" shell="$3" supplementary_group="${4:-}" skeleton="${5:-}"
+  local suffix username home
+  local -a useradd_args=(--create-home --user-group)
+  if [[ -s "$state_file" ]]; then
+    username="$(<"$state_file")"
+    [[ "$username" =~ ^${prefix}-[a-f0-9]{12}$ ]] || {
+      echo "Invalid persisted Astrochicken identity in $state_file" >&2
+      exit 1
+    }
+  else
+    suffix="$(od -An -N6 -tx1 /dev/urandom | tr -d '[:space:]')"
+    [[ "$suffix" =~ ^[a-f0-9]{12}$ ]] || { echo "Failed to generate $prefix identity" >&2; exit 1; }
+    username="$prefix-$suffix"
+    printf '%s\n' "$username" > "$state_file"
+    chmod 0600 "$state_file"
+  fi
+
+  home="/var/home/$username"
+  if ! /usr/bin/getent passwd "$username" >/dev/null; then
+    useradd_args+=(--home-dir "$home")
+    [[ -z "$supplementary_group" ]] || useradd_args+=(--groups "$supplementary_group")
+    [[ -z "$skeleton" ]] || useradd_args+=(--skel "$skeleton")
+    useradd_args+=(--shell "$shell" "$username")
+    /usr/sbin/useradd "${useradd_args[@]}"
+  fi
+  [[ "$(/usr/bin/getent passwd "$username" | cut -d: -f6)" == "$home" ]] || {
+    echo "Persisted Astrochicken identity has an unexpected home directory" >&2
+    exit 1
+  }
+  [[ "$(/usr/bin/getent passwd "$username" | cut -d: -f7)" == "$shell" ]] || {
+    echo "Persisted Astrochicken identity has an unexpected shell" >&2
+    exit 1
+  }
+  printf '%s\n' "$username"
+}
+
+app_user="$(generate_identity astrochicken "$state_dir/app-user" /usr/sbin/nologin "" /etc/astrochicken/app-skel)"
+app_home="/var/home/$app_user"
+chown "$app_user:$app_user" "$app_home"
+chmod 0750 "$app_home"
+install -d -o "$app_user" -g "$app_user" -m 0750 "$app_home/workspaces"
+install -d -o "$app_user" -g "$app_user" -m 0750 "$app_home/workspaces/astrochicken-flake"
+install -d -o "$app_user" -g "$app_user" -m 0700 "$app_home/.local/state/nix-alpine/releases"
+
+install -d -m 0755 /run/astrochicken
+printf '%s\n' "$app_user" > /run/astrochicken/app-user
+chmod 0644 /run/astrochicken/app-user
+
+if [[ -f /etc/astrochicken/console-enabled ]]; then
+  login_user="$(generate_identity local "$state_dir/console-user" /bin/bash "$app_user")"
+  login_home="/var/home/$login_user"
+  chmod 0700 "$login_home"
+  install -d -o "$login_user" -g "$login_user" -m 0700 "$login_home/.cache/tmp"
+  install -d -m 0700 /run/astrochicken-console
+  printf 'ASTROCHICKEN_CONSOLE_USER=%s\n' "$login_user" > /run/astrochicken-console/getty.env
+  chmod 0600 /run/astrochicken-console/getty.env
+fi

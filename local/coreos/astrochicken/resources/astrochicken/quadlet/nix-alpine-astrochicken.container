@@ -1,0 +1,25 @@
+[Unit]
+Description=Nix-Alpine persistent rootless toolbox for Astrochicken
+Requires=nix-alpine-image.service
+After=nix-alpine-image.service
+RequiresMountsFor=%h/workspaces
+
+[Container]
+ContainerName=nix-alpine-astrochicken
+Image=localhost/nix-alpine-astrochicken:workspace
+Pull=never
+Volume=nix-alpine-astrochicken-store.volume:/nix
+Volume=%h/workspaces:/workspaces:rw,Z
+Volume=%h/.local/state/nix-alpine/releases:/run/nix-alpine/releases:ro,Z
+WorkingDir=/workspaces/nix-alpine
+Environment=HOME=/home/nixuser
+Exec=sleep infinity
+UserNS=keep-id:uid=1000,gid=1000
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

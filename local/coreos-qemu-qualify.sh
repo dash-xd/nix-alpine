@@ -15,6 +15,7 @@ ssh_port="${11:-2222}"
 ssh_key="${12:-}"
 composition="${13:-fatline}"
 transient_test="${14:-0}"
+expected_marker="${15:-}"
 state="$(realpath -m "$state")"
 
 base="$state/base.qcow2"
@@ -127,7 +128,15 @@ trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
   if grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; then
-    if grep -Fq "PASS: generated composition user's systemd unit ran rootless Podman" "$serial" 2>/dev/null; then
+    if [[ -n "$expected_marker" ]]; then
+      if grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; then
+        echo "PASS: Fedora CoreOS bootstrap and requested guest qualification marker"
+      else
+        echo "FAIL: requested guest qualification marker is missing: $expected_marker" >&2
+        tail -n 160 "$serial" >&2
+        exit 1
+      fi
+    elif grep -Fq "PASS: generated composition user's systemd unit ran rootless Podman" "$serial" 2>/dev/null; then
       if grep -Fq "PASS: generated local login is read-only outside its workspace" "$serial" 2>/dev/null; then
         echo "PASS: Fedora CoreOS root bootstrap, composition rootless Podman, and read-only local console login"
       else

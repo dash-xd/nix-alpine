@@ -1,0 +1,53 @@
+#!/usr/bin/bash
+case $- in
+  *i*) ;;
+  *) return 0 ;;
+esac
+
+login_user="$(/usr/bin/id -un 2>/dev/null || true)"
+[[ "$login_user" =~ ^local-[a-f0-9]{12}$ ]] || return 0
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(/usr/bin/id -u)}"
+[[ -d "$runtime_dir" ]] || { echo "FAIL: console user systemd runtime is unavailable" >&2; exit 1; }
+
+if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" == 1 ]]; then
+  app_user="$(</run/astrochicken/app-user)"
+  test -r "/var/home/$app_user/workspaces/nix-alpine/local/Makefile" || {
+    echo "FAIL: local login cannot read the mounted Nix-Alpine workspace" >&2
+    exit 1
+  }
+  test_file="$(/usr/bin/mktemp "$HOME/.cache/tmp/astrochicken-write.XXXXXX")" || {
+    echo "FAIL: local login workspace is not writable" >&2
+    exit 1
+  }
+  /usr/bin/rm -f "$test_file"
+
+  for readonly_dir in /tmp /var/tmp /etc; do
+    probe="$readonly_dir/astrochicken-readonly-${UID}-$$"
+    if (umask 077; : > "$probe") 2>/dev/null; then
+      /usr/bin/rm -f "$probe"
+      echo "FAIL: local login can write outside its workspace ($readonly_dir)" >&2
+      exit 1
+    fi
+  done
+
+  : > "$HOME/.astrochicken-readonly.pass"
+  printf 'PASS: local login is read-only outside its workspace (%s)\n' "$HOME"
+  return 0
+fi
+
+exec /usr/bin/systemd-run \
+  --user --quiet --pty --wait --collect \
+  --unit=astrochicken-readonly-console \
+  --property=ProtectSystem=strict \
+  --property="ReadWritePaths=$HOME" \
+  --property="ReadOnlyPaths=/tmp /var/tmp" \
+  --property="InaccessiblePaths=-$runtime_dir -/dev/shm -/dev/mqueue" \
+  --property="WorkingDirectory=$HOME" \
+  --setenv=ASTROCHICKEN_READONLY_SESSION=1 \
+  --setenv="HOME=$HOME" \
+  --setenv="USER=$login_user" \
+  --setenv="LOGNAME=$login_user" \
+  --setenv="SHELL=/bin/bash" \
+  --setenv="XDG_RUNTIME_DIR=$runtime_dir" \
+  --setenv="TMPDIR=$HOME/.cache/tmp" \
+  /bin/bash --login

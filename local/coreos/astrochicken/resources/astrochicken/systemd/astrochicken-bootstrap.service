@@ -1,0 +1,14 @@
+[Unit]
+Description=Astrochicken CoreOS Nix-Alpine bootstrap
+Wants=network-online.target
+Requires=astrochicken-identities.service
+After=local-fs.target network-online.target astrochicken-identities.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/astrochicken-bootstrap
+TimeoutStartSec=35min
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

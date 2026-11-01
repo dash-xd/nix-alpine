@@ -1,0 +1,11 @@
+[Unit]
+Description=Create stable Astrochicken service and optional console identities
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/astrochicken-identities
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

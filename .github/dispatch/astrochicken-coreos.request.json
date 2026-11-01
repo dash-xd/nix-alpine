@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "execute": true,
+  "gate": "astrochicken-coreos",
+  "runner": "blacksmith-2vcpu-ubuntu-2404",
+  "nix_alpine_ref": "github.sha"
+}

@@ -1,0 +1,93 @@
+#!/usr/bin/bash
+set -Eeuo pipefail
+
+source_archive=/etc/astrochicken/nix-alpine-source.tar.gz
+[[ -s "$source_archive" ]] || { echo "Astrochicken Nix-Alpine source archive is missing" >&2; exit 1; }
+
+app_user="$(</run/astrochicken/app-user)"
+[[ "$app_user" =~ ^astrochicken-[a-f0-9]{12}$ ]] || { echo "Invalid generated Astrochicken service identity" >&2; exit 1; }
+home="$(/usr/bin/getent passwd "$app_user" | cut -d: -f6)"
+[[ "$home" == "/var/home/$app_user" && "$(/usr/bin/getent passwd "$app_user" | cut -d: -f7)" == /usr/sbin/nologin ]] || {
+  echo "Astrochicken service identity has an unexpected account configuration" >&2
+  exit 1
+}
+install -d -o "$app_user" -g "$app_user" -m 0750 "$home/workspaces/nix-alpine"
+install -d -o "$app_user" -g "$app_user" -m 0700 "$home/workspaces/astrochicken-flake"
+if [[ ! -f "$home/workspaces/nix-alpine/local/Makefile" ]]; then
+  tar --extract --gzip --file "$source_archive" --directory "$home/workspaces/nix-alpine" \
+    --no-same-owner --no-same-permissions
+fi
+if [[ -d /etc/astrochicken/workspace-imports ]]; then
+  cp -an /etc/astrochicken/workspace-imports/. "$home/workspaces/"
+fi
+chown -R "$app_user:$app_user" "$home/workspaces"
+if [[ ! -f "$home/workspaces/astrochicken-flake/flake.nix" ]]; then
+  install -o "$app_user" -g "$app_user" -m 0644 \
+    /etc/astrochicken/flake-fixture/flake.nix "$home/workspaces/astrochicken-flake/flake.nix"
+fi
+
+uid="$(/usr/bin/id -u "$app_user")"
+/usr/bin/loginctl enable-linger "$app_user"
+/usr/bin/systemctl start "user@$uid.service"
+runtime_dir="/run/user/$uid"
+for _ in {1..60}; do
+  [[ -S "$runtime_dir/bus" ]] && break
+  sleep 1
+done
+[[ -S "$runtime_dir/bus" ]] || { echo "Astrochicken user systemd manager did not start" >&2; exit 1; }
+
+as_app() {
+  /usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+    HOME="$home" USER="$app_user" LOGNAME="$app_user" \
+    XDG_RUNTIME_DIR="$runtime_dir" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" "$@"
+}
+
+as_app /usr/bin/systemctl --user daemon-reload
+as_app /usr/bin/systemctl --user start nix-alpine-astrochicken.service
+as_app /usr/bin/systemctl --user is-active --quiet nix-alpine-astrochicken.service
+as_app /usr/bin/systemctl --user start astrochicken-smoke.service
+
+marker="$home/workspaces/.astrochicken-workspace-write.pass"
+test -s "$marker" || { echo "Astrochicken toolbox did not write its mounted workspace" >&2; exit 1; }
+test "$(/usr/bin/stat -c %u "$marker")" = "$uid" || {
+  echo "Astrochicken workspace write has unexpected ownership" >&2
+  exit 1
+}
+
+if [[ -f /etc/astrochicken/console-enabled ]]; then
+  login_marker=""
+  login_user=""
+  for _ in {1..180}; do
+    [[ -r /run/astrochicken-console/getty.env ]] || { sleep 1; continue; }
+    login_user="$(sed -n 's/^ASTROCHICKEN_CONSOLE_USER=//p' /run/astrochicken-console/getty.env)"
+    [[ "$login_user" =~ ^local-[a-f0-9]{12}$ ]] || { echo "Invalid generated console login" >&2; exit 1; }
+    [[ "$(/usr/bin/getent passwd "$login_user" | cut -d: -f7)" == /bin/bash ]] || {
+      echo "Generated console login does not have Bash" >&2
+      exit 1
+    }
+    login_home="$(/usr/bin/getent passwd "$login_user" | cut -d: -f6)"
+    login_marker="$login_home/.astrochicken-readonly.pass"
+    if [[ -s "$login_marker" && "$(/usr/bin/stat -c %u "$login_marker" 2>/dev/null || true)" == "$(/usr/bin/id -u "$login_user")" ]]; then
+      break
+    fi
+    sleep 1
+  done
+  [[ -n "$login_user" && -n "$login_marker" && -s "$login_marker" && "$(/usr/bin/stat -c %u "$login_marker")" == "$(/usr/bin/id -u "$login_user")" ]] || {
+    echo "Generated read-only console login did not qualify within 180 seconds" >&2
+    exit 1
+  }
+  echo "PASS: generated local console login is read-only outside its workspace ($login_user)" >/dev/ttyS0
+fi
+
+as_app /usr/bin/systemctl --user restart nix-alpine-astrochicken.service
+as_app /usr/bin/systemctl --user is-active --quiet nix-alpine-astrochicken.service
+as_app /usr/bin/systemctl --user start astrochicken-smoke.service
+test "$(/usr/bin/podman exec nix-alpine-astrochicken cat /nix/.astrochicken-store-write.pass)" = persistent-nix-store || {
+  echo "Astrochicken Nix store did not persist across service restart" >&2
+  exit 1
+}
+
+rm -f "$marker"
+echo "PASS: Astrochicken CoreOS bootstrap started rootless user service $app_user" >/dev/ttyS0
+echo "PASS: Nix-Alpine Quadlet, writable workspace mount, mounted flake evaluation, and persistent Nix store" >/dev/ttyS0
