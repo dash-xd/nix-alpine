@@ -136,7 +136,10 @@ for ((i=0; i<timeout_seconds; i+=2)); do
     echo "CHECK: waiting for Fedora CoreOS qualification marker (${i}s elapsed)"
     tail -n 3 "$serial" 2>/dev/null || true
   fi
-  if grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; then
+  # Some compositions report only their own downstream marker on ttyS0.
+  # Requiring the generic marker first would make those valid guest smokes time out.
+  if { [[ -n "$expected_marker" ]] && grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; } || \
+     { [[ -z "$expected_marker" ]] && grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; }; then
     if [[ -n "$expected_marker" ]]; then
       if grep -Fq -- "$expected_marker" "$serial" 2>/dev/null; then
         echo "PASS: Fedora CoreOS bootstrap and requested guest qualification marker"
@@ -191,7 +194,11 @@ for ((i=0; i<timeout_seconds; i+=2)); do
   sleep 2
 done
 
-echo "FAIL: CoreOS did not report the Podman qualification bootstrap PASS marker" >&2
+if [[ -n "$expected_marker" ]]; then
+  echo "FAIL: CoreOS did not report the requested guest qualification marker: $expected_marker" >&2
+else
+  echo "FAIL: CoreOS did not report the Podman qualification bootstrap PASS marker" >&2
+fi
 systemctl --user --no-pager -l status "$unit.service" >&2 || true
 journalctl --user -u "$unit.service" --no-pager -n 120 >&2 || true
 podman logs "$container_name" >&2 2>/dev/null || true
