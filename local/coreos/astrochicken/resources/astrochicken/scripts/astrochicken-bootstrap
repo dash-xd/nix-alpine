@@ -67,6 +67,29 @@ as_app() {
     rc=$?
     printf 'FAIL: Astrochicken user command exited %s: %s\n' "$rc" "$*" >/dev/ttyS0 2>/dev/null || true
     [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0 2>/dev/null || true
+    if [[ "$*" == "/usr/bin/systemctl --user start nix-alpine-astrochicken.service" ]]; then
+      local diagnostics
+      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
+        XDG_RUNTIME_DIR="$runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+        /usr/bin/systemctl --user --no-pager --full list-dependencies --all nix-alpine-astrochicken.service 2>&1 || true)"
+      printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user unit dependency tree' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
+      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
+        XDG_RUNTIME_DIR="$runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+        /usr/bin/systemctl --user --no-pager --full status \
+        nix-alpine-astrochicken.service nix-alpine-image.service \
+        nix-alpine-astrochicken-store-volume.service 2>&1 || true)"
+      printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user unit status' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
+      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
+        XDG_RUNTIME_DIR="$runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+        /usr/bin/journalctl --user --no-pager -b -n 200 2>&1 || true)"
+      printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user journal' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
+    fi
     return "$rc"
   fi
 }
