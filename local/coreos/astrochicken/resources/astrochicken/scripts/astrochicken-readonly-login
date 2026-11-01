@@ -6,6 +6,12 @@ esac
 
 login_user="$(/usr/bin/id -un 2>/dev/null || true)"
 [[ "$login_user" =~ ^local-[a-f0-9]{12}$ ]] || return 0
+report_path="$HOME/.astrochicken-readonly.log"
+
+if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" != 1 ]]; then
+  : > "$report_path" || { echo "FAIL: cannot create console qualification report" >&2; exit 1; }
+  exec > >(/usr/bin/tee -a "$report_path") 2>&1
+fi
 
 if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" == 1 ]]; then
   app_user="$(</run/astrochicken/app-user)"
