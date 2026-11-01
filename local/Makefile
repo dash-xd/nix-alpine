@@ -5,7 +5,7 @@ CONTAINER ?= nix-alpine-$(SCOPE)
 SERVICE := $(CONTAINER).service
 VOLUME := $(CONTAINER)-store
 IMAGE ?= localhost/nix.xd:latest
-WORKSPACES ?= $(HOME)/workspace/nix
+WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
 COMPOSITION_AGNI_SOURCE ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)
 export COMPOSITION_AGNI_SOURCE
 FLAKE ?= .

@@ -1,6 +1,6 @@
 # Local Nix-Alpine workspace (Make/Bash only)
 
-Place this repository at `~/workspace/nix/nix-alpine`. The parent directory is mounted to `/workspaces` in the container.
+Place the generic checkout at `~/workspace/nix/nix-alpine`, or place a dated checkout under `~/workspace/nix/workspaces/<date>/<workspace-name>/nix-alpine`. The parent workspace is inferred from the checkout and mounted to `/workspaces` in the container. Override `WORKSPACES` only when the workspace layout differs.
 
 ```bash
 mkdir -p ~/workspace/nix
