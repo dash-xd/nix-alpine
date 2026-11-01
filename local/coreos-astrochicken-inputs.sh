@@ -42,12 +42,11 @@ cleanup() {
 }
 trap cleanup EXIT
 cp -a "$profile/resources/." "$staging/"
-cp "$profile/butane/astrochicken.bu" "$staging/astrochicken.bu"
 git -C "$source_dir" archive --format=tar "$source_rev" | gzip -n > "$staging/astrochicken/nix-alpine-source.tar.gz"
 printf '%s\n' "$source_rev" > "$staging/astrochicken/nix-alpine-revision"
 
 mkdir -p "$staging/astrochicken/workspace-imports"
-entries="$staging/.workspace-file-entries"
+entries="$staging/.extra-storage-files"
 : > "$entries"
 declare -A destinations=()
 count=0
@@ -86,29 +85,29 @@ for relative_path in "${requested_files[@]}"; do
     "$relative_path" "$resource_path" >> "$entries"
 done
 
-if (( count > 0 )); then
-  printf 'variant: fcos\nversion: 1.7.0\nstorage:\n  files:\n' > "$staging/astrochicken-workspace-files.bu"
-  cat "$entries" >> "$staging/astrochicken-workspace-files.bu"
-else
-  printf 'variant: fcos\nversion: 1.7.0\n' > "$staging/astrochicken-workspace-files.bu"
-fi
-rm -f -- "$entries"
-
-cat > "$staging/astrochicken-generated.bu" <<'EOF'
-variant: fcos
-version: 1.7.0
-ignition:
-  config:
-    merge:
-      - local: astrochicken.bu
-EOF
-if (( count > 0 )); then
-  printf '      - local: astrochicken-workspace-files.bu\n' >> "$staging/astrochicken-generated.bu"
-fi
 if [[ "$console_login" == 1 ]]; then
-  cp "$profile/butane/astrochicken-console.bu" "$staging/astrochicken-console-profile.bu"
-  printf '      - local: astrochicken-console-profile.bu\n' >> "$staging/astrochicken-generated.bu"
+  cat >> "$entries" <<'EOF'
+    - path: /etc/astrochicken/console-enabled
+      mode: 0444
+      contents:
+        inline: enabled
+EOF
 fi
+
+config="$staging/astrochicken-generated.bu"
+awk -v extra="$entries" '
+  $0 == "  # ASTROCHICKEN_EXTRA_STORAGE_FILES" {
+    while ((getline line < extra) > 0) print line
+    close(extra)
+    next
+  }
+  { print }
+' "$profile/butane/astrochicken.bu" > "$config"
+grep -q '^  # ASTROCHICKEN_EXTRA_STORAGE_FILES$' "$profile/butane/astrochicken.bu" || {
+  echo "Astrochicken Butane storage insertion point is missing" >&2
+  exit 2
+}
+rm -f -- "$entries"
 
 if [[ -e "$resource_output" ]]; then
   [[ -d "$resource_output" && ! -L "$resource_output" ]] || {
@@ -119,5 +118,6 @@ if [[ -e "$resource_output" ]]; then
 fi
 mv -- "$staging" "$resource_output"
 staging=""
-echo "PASS: Astrochicken Butane resources staged from Nix-Alpine $source_rev"
+echo "PASS: single Astrochicken Butane document staged from Nix-Alpine $source_rev"
 echo "Astrochicken workspace files embedded: $count"
+echo "Astrochicken console login enabled: $console_login"

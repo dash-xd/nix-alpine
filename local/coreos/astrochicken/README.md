@@ -9,32 +9,32 @@ and its Podman container run without host root.
 
 The service name is persisted on the CoreOS guest disk, so a guest reboot
 reuses the same app account, home, user manager, and Nix store. The optional
-console profile creates a separate persisted `local-<random>` shell account;
-it can read the service workspace but its interactive sandbox blocks writes
-outside its own home workspace.
+browser console profile creates a separate persisted `local-<random>` shell
+account. It can read the service workspace, and its interactive sandbox blocks
+writes outside its own home workspace.
 
-Set `COREOS_QEMU_CONSOLE_LOGIN=1 COREOS_QEMU_DISPLAY=web` to add a separate
-generated `local-<random>` login account for the browser console. The account
-has a Bash shell, and its interactive session is started by its user systemd
-manager with writes limited to that account's home workspace. The generated
-service identity remains nologin. Add `COREOS_QEMU_HOLD=1` to keep the VM and
-browser console open after the smoke passes; stop it with
-`make clean-coreos-astrochicken` from another terminal.
+Set `COREOS_QEMU_CONSOLE_LOGIN=1 COREOS_QEMU_DISPLAY=web` to enable that
+separate generated console login. The account has a Bash shell, and its
+interactive session runs under its user systemd manager with writes limited to
+its home workspace. The generated service identity remains nologin. Add
+`COREOS_QEMU_HOLD=1` to keep the VM and browser console open after the smoke
+passes; stop it with `make clean-coreos-astrochicken` from another terminal.
 
 Run it from `local/` with `make qualify-coreos-astrochicken`. Make uses the
-pinned Agni CoreOS image and QEMU runner, but owns the Astrochicken Butane
-configuration and guest resources. The default smoke checks that the user
-service survives a container restart, the mounted workspace is writable, a
-flake in that workspace evaluates, and the named Nix store persists across a
-service restart. It does not start a transient guest test service or claim
-Fatline application qualification.
+pinned Agni CoreOS image and QEMU runner, but Nix-Alpine owns the Astrochicken
+Butane configuration and guest resources. The input generator emits one
+complete Butane document; it does not pass Butane YAML as an Ignition merge.
+The default smoke checks that the user service survives a container restart,
+the mounted workspace is writable, a flake in that workspace evaluates, and
+the named Nix store persists across a service restart. It does not start a
+transient guest test service or claim Fatline application qualification.
 
 The pinned Nix-Alpine source is archived from its clean Git revision and
 included in Ignition so the guest can build its toolbox. Additional local
 workspace files can be embedded with `COREOS_ASTROCHICKEN_WORKSPACE_FILES`, a
-space-separated list of paths relative to `WORKSPACES`. The files are copied
-into the guest workspace at the same relative paths and become visible in the
-container under `/workspaces`. For example:
+space-separated list of paths relative to `WORKSPACES`. Files are copied into
+the guest workspace at the same relative paths and visible in the container
+under `/workspaces`. For example:
 
 ```sh
 make qualify-coreos-astrochicken \
@@ -43,8 +43,8 @@ make qualify-coreos-astrochicken \
 ```
 
 Inputs must be regular files beneath `WORKSPACES`; symlinks and path traversal
-are rejected. The resulting Butane and resource bundle is content-hashed by
-the existing QEMU artifact builder.
+are rejected. The generated Butane document and resource bundle are
+content-hashed by the existing QEMU artifact builder.
 
 Smoke's `astrochicken-xd-run` remains a distinct named Smoke composition. It
 pins and seeds Agni Probe and its other profile tools into a Smoke environment;

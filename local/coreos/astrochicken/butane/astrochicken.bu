@@ -6,6 +6,18 @@ systemd:
       enabled: true
     - name: astrochicken-bootstrap.service
       enabled: true
+    - name: getty@tty1.service
+      dropins:
+        - name: 10-astrochicken-console-autologin.conf
+          contents: |
+            [Unit]
+            ConditionPathExists=/etc/astrochicken/console-enabled
+            Requires=astrochicken-identities.service
+            After=astrochicken-identities.service
+            [Service]
+            EnvironmentFile=/run/astrochicken-console/getty.env
+            ExecStart=
+            ExecStart=-/usr/sbin/agetty --autologin ${ASTROCHICKEN_CONSOLE_USER} --noclear %I $TERM
 storage:
   files:
     - path: /etc/systemd/system/astrochicken-identities.service
@@ -28,6 +40,10 @@ storage:
       mode: 0755
       contents:
         local: astrochicken/scripts/astrochicken-smoke
+    - path: /etc/profile.d/astrochicken-readonly-login.sh
+      mode: 0644
+      contents:
+        local: astrochicken/scripts/astrochicken-readonly-login
     - path: /etc/astrochicken/nix-alpine-source.tar.gz
       mode: 0644
       contents:
@@ -52,6 +68,7 @@ storage:
       mode: 0644
       contents:
         local: astrochicken/quadlet/nix-alpine-astrochicken-store.volume
+  # ASTROCHICKEN_EXTRA_STORAGE_FILES
   links:
     - path: /etc/astrochicken/app-skel/.config/systemd/user/default.target.wants/astrochicken-smoke.service
       target: ../astrochicken-smoke.service
