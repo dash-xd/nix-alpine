@@ -664,15 +664,15 @@ coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 ensure-coreos-state-mount:
 	@set -euo pipefail; \
-	  expected="$(realpath -m "$(COREOS_STATE_ROOT)")"; \
-	  actual="$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
-	  running="$(podman inspect "$(CONTAINER)" --format '{{.State.Running}}' 2>/dev/null || true)"; \
-	  if [[ "$actual" != "$expected" || "$running" != true ]]; then \
+	  expected="$$(realpath -m "$(COREOS_STATE_ROOT)")"; \
+	  actual="$$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
+	  running="$$(podman inspect "$(CONTAINER)" --format '{{.State.Running}}' 2>/dev/null || true)"; \
+	  if [[ "$$actual" != "$$expected" || "$$running" != true ]]; then \
 	    echo "Refreshing toolbox to mount scoped CoreOS build state"; \
 	    $(COREOS_MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" STATE_ROOT="$(COREOS_STATE_ROOT)"; \
 	  fi; \
-	  actual="$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}')"; \
-	  [[ "$actual" == "$expected" ]] || { echo "Toolbox is missing the expected CoreOS state mount" >&2; exit 1; }
+	  actual="$$(podman inspect "$(CONTAINER)" --format '{{range .Mounts}}{{if eq .Destination "/run/nix-alpine/coreos-qemu"}}{{.Source}}{{end}}{{end}}')"; \
+	  [[ "$$actual" == "$$expected" ]] || { echo "Toolbox is missing the expected CoreOS state mount" >&2; exit 1; }
 coreos-qemu-build:
 	@$(COREOS_MAKE) ensure-coreos-state-mount
 	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
