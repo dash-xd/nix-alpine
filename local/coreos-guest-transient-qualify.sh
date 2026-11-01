@@ -21,7 +21,7 @@ remote_dir="/var/tmp/$run_id"
 [[ "$remote_user" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "invalid SSH login user" >&2; exit 2; }
 [[ "$host" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "invalid SSH host" >&2; exit 2; }
 [[ "$payload_name" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "invalid tester filename" >&2; exit 2; }
-[[ -x "$key" && -r "$payload" && -r "$runner" ]] || { echo "key or transient tester input is missing" >&2; exit 2; }
+[[ -r "$key" && -r "$payload" && -r "$runner" ]] || { echo "key or transient tester input is missing" >&2; exit 2; }
 install -m 0600 "$key" "$private_key"
 
 cleanup() {
