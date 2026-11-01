@@ -1,6 +1,15 @@
 #!/usr/bin/bash
 set -Eeuo pipefail
 
+report_bootstrap_failure() {
+  local rc=$?
+  local line="${BASH_LINENO[0]:-unknown}"
+  trap - ERR
+  printf 'FAIL: Astrochicken bootstrap script failed at line %s (exit %s)\n' "$line" "$rc" >/dev/ttyS0 2>/dev/null || true
+  exit "$rc"
+}
+trap report_bootstrap_failure ERR
+
 source_archive=/etc/astrochicken/nix-alpine-source.tar.gz
 [[ -s "$source_archive" ]] || { echo "Astrochicken Nix-Alpine source archive is missing" >&2; exit 1; }
 
