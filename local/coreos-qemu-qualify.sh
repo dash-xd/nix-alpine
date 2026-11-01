@@ -127,7 +127,7 @@ cleanup() {
 trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
-  if grep -Fq 'FAIL: Astrochicken bootstrap script failed at line ' "$serial" 2>/dev/null; then
+  if grep -Fq 'FAIL: Astrochicken bootstrap exited with status ' "$serial" 2>/dev/null; then
     echo "FAIL: Astrochicken guest bootstrap script reported an error" >&2
     tail -n 160 "$serial" >&2
     exit 1
