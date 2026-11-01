@@ -59,7 +59,7 @@ COMPOSITION_PRODUCTION_ACL_MODE ?= 0
 COMPOSITION ?= fatline
 GATE ?= all
 LOG ?= 0
-LOG_DIR ?= $(HOME)/.local/state/nix-alpine/qualification-logs
+LOG_DIR ?= $(CURDIR)/qualification-logs
 LOG_NAME ?= $(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$(firstword $(MAKECMDGOALS)))
 QUADLET ?= 0
 QUADLET_PROVIDER_ENV = $(if $(filter 1,$(QUADLET)),COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1)
@@ -88,7 +88,7 @@ help:
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
-	@echo "make inventory RESOURCE=units|quadlets|containers|networks|images|volumes PREFIX=... (read-only; omit PREFIX for all)"
+	@echo "make inventory RESOURCE=units|quadlets|containers|networks|images|volumes|paths PREFIX=... PATHS=... (read-only)"
 	@echo "make cleanup RESOURCE=... PREFIX=... DRY_RUN=1|0 (literal prefix; dry-run by default)"
 
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|production-acl|strict-readiness LOG=1 (timestamped log + exit code)"
@@ -541,10 +541,12 @@ qualify-deployment-socket:
 # cleanup requires a prefix and defaults to a dry run.
 RESOURCE ?= containers
 PREFIX ?=
+PATHS ?=
+PATH_DEPTH ?= 2
 DRY_RUN ?= 1
 .PHONY: inventory cleanup
 inventory:
-	@bash ./resource-lifecycle.sh inspect "$(RESOURCE)" "$(PREFIX)"
+	@bash ./resource-lifecycle.sh inspect "$(RESOURCE)" "$(PREFIX)" 1 "$(PATHS)" "$(PATH_DEPTH)"
 cleanup:
 	@bash ./resource-lifecycle.sh cleanup "$(RESOURCE)" "$(PREFIX)" "$(DRY_RUN)"
 

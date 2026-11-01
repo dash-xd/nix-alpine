@@ -28,9 +28,9 @@ make qualify-composition COMPOSITION=fatline GATE=all LOG=1
 make qualify-composition-skymill-provider QUADLET=1 LOG=1
 ```
 
-Logs default to `~/.local/state/nix-alpine/qualification-logs`. Override
-`LOG_DIR` to choose another directory or `LOG_NAME` to set the filename
-prefix. The Skymill Quadlet mode runs Skymill's disposable provider against
+Logs default to `local/qualification-logs` in this checkout. The directory is
+tracked; generated `*.log` files are ignored. Override `LOG_DIR` to choose
+another directory or `LOG_NAME` to set the filename prefix. The Skymill Quadlet mode runs Skymill's disposable provider against
 Logma, Redis, and Nginx started as systemd-user Quadlets.
 
 ## CoreOS transient guest tester

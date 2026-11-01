@@ -5,19 +5,47 @@ action=${1:-inspect}
 resource=${2:-}
 prefix=${3:-}
 dry_run=${4:-1}
+path_list=${5:-}
+path_depth=${6:-2}
 
 case "$action" in
   inspect|cleanup) ;;
   *) echo "ACTION must be inspect or cleanup" >&2; exit 2 ;;
 esac
 case "$resource" in
-  units|quadlets|containers|networks|images|volumes) ;;
-  *) echo "RESOURCE must be units, quadlets, containers, networks, images or volumes" >&2; exit 2 ;;
+  units|quadlets|containers|networks|images|volumes|paths) ;;
+  *) echo "RESOURCE must be units, quadlets, containers, networks, images, volumes or paths" >&2; exit 2 ;;
 esac
 [[ "$dry_run" == 0 || "$dry_run" == 1 ]] || { echo "DRY_RUN must be 0 or 1" >&2; exit 2; }
+if [[ "$action" == cleanup && "$resource" == paths ]]; then
+  echo "RESOURCE=paths is read-only; use explicit host file management for relocation" >&2
+  exit 2
+fi
 if [[ "$action" == cleanup && -z "$prefix" ]]; then
   echo "cleanup requires a literal PREFIX; inspect may omit it to list all resources" >&2
   exit 2
+fi
+
+if [[ "$resource" == paths ]]; then
+  [[ "$action" == inspect ]] || { echo "RESOURCE=paths is read-only" >&2; exit 2; }
+  [[ -n "$path_list" ]] || { echo "PATHS must be a colon-separated list of host paths" >&2; exit 2; }
+  [[ "$path_depth" =~ ^[0-6]$ ]] || { echo "PATH_DEPTH must be an integer from 0 through 6" >&2; exit 2; }
+  IFS=: read -r -a paths <<< "$path_list"
+  for path in "${paths[@]}"; do
+    [[ -n "$path" ]] || continue
+    printf '\nPATH %q\n' "$path"
+    if [[ ! -e "$path" && ! -L "$path" ]]; then
+      echo "  missing"
+      continue
+    fi
+    stat -c '  root: type=%F mode=%a owner=%U:%G bytes=%s modified=%y' -- "$path"
+    if [[ -d "$path" && "$path_depth" -gt 0 ]]; then
+      find "$path" -mindepth 1 -maxdepth "$path_depth" -printf '%y %m %u:%g %s %TY-%Tm-%TdT%TH:%TM:%TS %p\n' | LC_ALL=C sort
+    elif [[ -L "$path" ]]; then
+      printf '  target: %s\n' "$(readlink -- "$path")"
+    fi
+  done
+  exit 0
 fi
 
 names=()
