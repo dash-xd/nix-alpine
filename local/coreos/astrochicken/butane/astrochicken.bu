@@ -36,6 +36,14 @@ storage:
       mode: 0755
       contents:
         local: astrochicken/scripts/astrochicken-bootstrap
+    - path: /etc/systemd/system/astrochicken-qemu-bootstrap-failure.service
+      mode: 0644
+      contents:
+        local: astrochicken/systemd/astrochicken-qemu-bootstrap-failure.service
+    - path: /usr/local/libexec/astrochicken-qemu-bootstrap-failure
+      mode: 0755
+      contents:
+        local: astrochicken/scripts/astrochicken-qemu-bootstrap-failure
     - path: /usr/local/libexec/astrochicken-smoke
       mode: 0755
       contents:
