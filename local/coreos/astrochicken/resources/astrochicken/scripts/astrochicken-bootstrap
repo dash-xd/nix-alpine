@@ -56,44 +56,33 @@ for _ in {1..60}; do
 done
 [[ -S "$runtime_dir/bus" ]] || { echo "Astrochicken user systemd manager did not start" >&2; exit 1; }
 
-as_app() {
-  local output rc
-  if output="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+app_command() {
+  /usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
     HOME="$home" USER="$app_user" LOGNAME="$app_user" \
     XDG_RUNTIME_DIR="$runtime_dir" \
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" "$@" 2>&1)"; then
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" "$@"
+}
+
+as_app() {
+  local output rc unit diagnostics
+  if output="$(app_command "$@" 2>&1)"; then
     [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0
   else
     rc=$?
     printf 'FAIL: Astrochicken user command exited %s: %s\n' "$rc" "$*" >/dev/ttyS0 2>/dev/null || true
     [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0 2>/dev/null || true
-    if [[ "$*" == "/usr/bin/systemctl --user start nix-alpine-astrochicken.service" ]]; then
-      local diagnostics
-      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
-        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
-        /usr/bin/systemctl --user --no-pager --full list-dependencies --all nix-alpine-astrochicken.service 2>&1 || true)"
-      printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user unit dependency tree' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
-      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
-        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
-        /usr/bin/systemctl --user --no-pager --full status \
-        nix-alpine-astrochicken.service nix-alpine-image.service \
-        nix-alpine-astrochicken-store-volume.service 2>&1 || true)"
-      printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user unit status' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
-      diagnostics="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
-        HOME="$home" USER="$app_user" LOGNAME="$app_user" \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
-        /usr/bin/journalctl --user --no-pager -b -n 200 2>&1 || true)"
+    if [[ "${1:-}" == "/usr/bin/systemctl" && "${2:-}" == "--user" && "${3:-}" == "start" && -n "${4:-}" ]]; then
+      unit="${4}"
+      diagnostics="$(app_command /usr/bin/systemctl --user --no-pager --full list-dependencies --all "$unit" 2>&1 || true)"
+      printf 'DIAGNOSTIC: Astrochicken user unit dependency tree (%s)\n%s\n' "$unit" "$diagnostics" >/dev/ttyS0 2>/dev/null || true
+      diagnostics="$(app_command /usr/bin/systemctl --user --no-pager --full status "$unit" 2>&1 || true)"
+      printf 'DIAGNOSTIC: Astrochicken user unit status (%s)\n%s\n' "$unit" "$diagnostics" >/dev/ttyS0 2>/dev/null || true
+      diagnostics="$(app_command /usr/bin/journalctl --user --no-pager -b -n 200 2>&1 || true)"
       printf '%s\n%s\n' 'DIAGNOSTIC: Astrochicken user journal' "$diagnostics" >/dev/ttyS0 2>/dev/null || true
     fi
     return "$rc"
   fi
 }
-
 as_app /usr/bin/systemctl --user daemon-reload
 as_app /usr/bin/systemctl --user start nix-alpine-astrochicken.service
 as_app /usr/bin/systemctl --user is-active --quiet nix-alpine-astrochicken.service
