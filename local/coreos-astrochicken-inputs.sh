@@ -97,15 +97,17 @@ rm -f -- "$entries"
 cat > "$staging/astrochicken-generated.bu" <<'EOF'
 variant: fcos
 version: 1.7.0
-merge:
-  - local: astrochicken.bu
+ignition:
+  config:
+    merge:
+      - local: astrochicken.bu
 EOF
 if (( count > 0 )); then
-  printf '  - local: astrochicken-workspace-files.bu\n' >> "$staging/astrochicken-generated.bu"
+  printf '      - local: astrochicken-workspace-files.bu\n' >> "$staging/astrochicken-generated.bu"
 fi
 if [[ "$console_login" == 1 ]]; then
   cp "$profile/butane/astrochicken-console.bu" "$staging/astrochicken-console-profile.bu"
-  printf '  - local: astrochicken-console-profile.bu\n' >> "$staging/astrochicken-generated.bu"
+  printf '      - local: astrochicken-console-profile.bu\n' >> "$staging/astrochicken-generated.bu"
 fi
 
 if [[ -e "$resource_output" ]]; then
