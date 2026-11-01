@@ -64,7 +64,7 @@ collect_resources() {
         matches_prefix "$name" || continue
         names+=("$name")
         details["$name"]="$active/$sub"
-      done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
+      done < <(systemctl --user list-units --all --no-legend --no-pager)
       while read -r name state description; do
         [[ -n "$name" ]] || continue
         matches_prefix "$name" || continue
@@ -74,7 +74,7 @@ collect_resources() {
           names+=("$name")
           details["$name"]="unit-file=$state"
         fi
-      done < <(systemctl --user list-unit-files --type=service --no-legend --no-pager)
+      done < <(systemctl --user list-unit-files --no-legend --no-pager)
       ;;
     quadlets)
       quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
