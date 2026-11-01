@@ -3,6 +3,7 @@ Description=Astrochicken CoreOS Nix-Alpine bootstrap
 Wants=network-online.target
 Requires=astrochicken-identities.service
 After=local-fs.target network-online.target astrochicken-identities.service
+OnFailure=astrochicken-qemu-bootstrap-failure.service
 
 [Service]
 Type=oneshot
