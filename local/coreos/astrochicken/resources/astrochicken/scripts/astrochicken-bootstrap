@@ -123,7 +123,14 @@ if [[ -f /etc/astrochicken/console-enabled ]]; then
     sleep 1
   done
   [[ -n "$login_user" && -n "$login_marker" && -s "$login_marker" && "$(/usr/bin/stat -c %u "$login_marker")" == "$(/usr/bin/id -u "$login_user")" ]] || {
-    echo "Generated read-only console login did not qualify within 180 seconds" >&2
+    echo "Generated read-only console login did not qualify within 180 seconds" >/dev/ttyS0 2>&1 || true
+    login_report="$login_home/.astrochicken-readonly.log"
+    if [[ -s "$login_report" ]]; then
+      echo "DIAGNOSTIC: generated console login output ($login_report)" >/dev/ttyS0 2>&1 || true
+      /usr/bin/tail -n 120 "$login_report" >/dev/ttyS0 2>&1 || true
+    else
+      echo "DIAGNOSTIC: generated console login produced no report file" >/dev/ttyS0 2>&1 || true
+    fi
     exit 1
   }
   echo "PASS: generated local console login is read-only outside its workspace ($login_user)" >/dev/ttyS0
