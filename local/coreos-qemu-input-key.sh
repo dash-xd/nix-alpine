@@ -20,6 +20,7 @@ done
   printf 'agni=%s\n' "$agni_rev"
   printf 'config=%s\n' "$config_name"
   printf 'composition=%s\n' "$composition_name"
+  printf 'test-ssh-public-key-sha256=%s\n' "$(printf '%s' "${COREOS_TEST_SSH_PUBLIC_KEY:-}" | sha256sum | awk '{print $1}')"
   for path in "$config_dir" "$resources_dir"; do
     if find "$path" -type l -print -quit | grep -q .; then
       echo "Symlinks are not allowed in Butane inputs: $path" >&2

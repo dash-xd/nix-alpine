@@ -81,7 +81,8 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
-	@echo "make qualify-coreos-qemu COREOS_QEMU_DISPLAY=headless|web COREOS_QEMU_CONSOLE_LOGIN=0|1 COREOS_QEMU_HOLD=0|1 LOG=1 (FCOS/QEMU; Podman under transient systemd)"
+	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
+	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
 	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
 	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
@@ -590,12 +591,26 @@ COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_QEMU_CONSOLE_LOGIN ?= 0
 COREOS_QEMU_HOLD ?= 0
+COREOS_QEMU_TRANSIENT_TESTER ?= 0
+COREOS_QEMU_SSH_PORT ?= 2222
 COREOS_COMPOSITION_NAME ?= $(COMPOSITION)
 COREOS_CONFIG_NAME ?= $(if $(filter 1,$(COREOS_QEMU_CONSOLE_LOGIN)),fatline-bootstrap-console.bu,fatline-bootstrap.bu)
 COREOS_REUSE ?= 1
-export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_COMPOSITION_NAME COREOS_REUSE
+export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_QEMU_TRANSIENT_TESTER COREOS_QEMU_SSH_PORT COREOS_COMPOSITION_NAME COREOS_REUSE COREOS_TEST_SSH_PUBLIC_KEY
 
-.PHONY: qualify-coreos-qemu coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
+# The same transient guest harness is used against QEMU's forwarded SSH port
+# and a GCP/IAP local tunnel. SSH is test transport only; it is never in the
+# guest's production activation dependencies.
+COREOS_GUEST_HOST ?=
+COREOS_GUEST_PORT ?= 22
+COREOS_GUEST_KEY ?=
+COREOS_GUEST_SSH_USER ?= core
+COREOS_GUEST_COMPOSITION ?= $(COREOS_COMPOSITION_NAME)
+COREOS_GUEST_RUNTIME ?= 10m
+COREOS_GUEST_PAYLOAD ?= ./coreos-guest-transient-smoke.sh
+export COREOS_GUEST_SSH_USER
+
+.PHONY: qualify-coreos-qemu qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
@@ -603,7 +618,13 @@ qualify-coreos-qemu:
 	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" == 1 && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN=1 requires COREOS_QEMU_DISPLAY=web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" != 0 && "$(COREOS_QEMU_HOLD)" != 1 ]]; then echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; fi
-	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires COREOS_QEMU_CONSOLE_LOGIN=1" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" != 0 && "$(COREOS_QEMU_TRANSIENT_TESTER)" != 1 ]]; then echo "COREOS_QEMU_TRANSIENT_TESTER must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then \
+	  case "$(COREOS_QEMU_SSH_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_SSH_PORT must be numeric" >&2; exit 2;; esac; \
+	  ssh_port_num=$$((10#$(COREOS_QEMU_SSH_PORT))); \
+	  if (( ssh_port_num < 1024 || ssh_port_num > 65535 )); then echo "COREOS_QEMU_SSH_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
+	fi
+	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 && "$(COREOS_QEMU_TRANSIENT_TESTER)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires a console login or transient tester profile" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then \
 	  case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; \
 	  web_port_num=$$((10#$(COREOS_QEMU_WEB_PORT))); \
@@ -616,11 +637,21 @@ qualify-coreos-qemu:
 	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
 	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
-	  $(COREOS_MAKE) coreos-qemu-build; \
-	  $(COREOS_MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
-	  $(COREOS_MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
-	  bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)"; \
+	  if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then \
+	    bash ./coreos-qemu-transient-qualify.sh "$(COREOS_MAKE)" "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_STATE)" "$(COREOS_UNIT)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_COMPOSITION_NAME)"; \
+	  else \
+	    $(COREOS_MAKE) coreos-qemu-build; \
+	    $(COREOS_MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	    $(COREOS_MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	    bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)"; \
+	  fi; \
 	fi
+
+qualify-coreos-guest-transient:
+	@if [[ -z "$(COREOS_GUEST_HOST)" || -z "$(COREOS_GUEST_KEY)" ]]; then echo "Set COREOS_GUEST_HOST and COREOS_GUEST_KEY (for GCP, point HOST/PORT at the local IAP tunnel)" >&2; exit 2; fi
+	@for command in ssh scp; do command -v "$$command" >/dev/null || { echo "Missing host command: $$command" >&2; exit 2; }; done
+	@if [[ "$(LOG)" == 1 ]]; then bash ./logged-run.sh "$(LOG_DIR)" "coreos-guest-transient" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-guest-transient LOG=0; \
+	else bash ./coreos-guest-transient-qualify.sh "$(COREOS_GUEST_HOST)" "$(COREOS_GUEST_PORT)" "$(COREOS_GUEST_KEY)" "$(COREOS_GUEST_COMPOSITION)" "$(COREOS_GUEST_RUNTIME)" "$(COREOS_GUEST_PAYLOAD)"; fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 coreos-qemu-build:

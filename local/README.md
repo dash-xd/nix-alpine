@@ -33,6 +33,30 @@ Logs default to `~/.local/state/nix-alpine/qualification-logs`. Override
 prefix. The Skymill Quadlet mode runs Skymill's disposable provider against
 Logma, Redis, and Nginx started as systemd-user Quadlets.
 
+## CoreOS transient guest tester
+
+`make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=1` creates a throwaway
+SSH key, injects only its public half into a qualification-only Ignition
+profile, and forwards SSH on loopback. It copies the small tester into FCOS
+with SCP, then runs it as the generated composition user using a transient
+`systemd --user` unit. The private key and remote staging files are removed
+when the gate exits. This is an optional qualification path and is not part of
+production boot or recovery.
+
+The same guest runner can target a GCP CoreOS guest through an already-open
+IAP tunnel. After starting the tunnel on a local port, run:
+
+```bash
+make qualify-coreos-guest-transient \
+  COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=2222 \
+  COREOS_GUEST_KEY="$HOME/.ssh/coreos-test" \
+  COREOS_GUEST_COMPOSITION=fatline LOG=1
+```
+
+The guest must have the Agni-generated composition user and user systemd
+manager. The GCP tunnel/key setup stays outside the shared guest runner; SSH
+and SCP are only test transport.
+
 ## Local release workflow
 
 The host only needs Make, Bash, jq, and rootless Podman. Nix executes in the

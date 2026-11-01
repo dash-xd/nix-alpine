@@ -11,6 +11,10 @@ qemu_image="${7:?QEMU runtime image is required}"
 display="${8:-headless}"
 web_port="${9:-8006}"
 hold="${10:-0}"
+ssh_port="${11:-2222}"
+ssh_key="${12:-}"
+composition="${13:-fatline}"
+transient_test="${14:-0}"
 state="$(realpath -m "$state")"
 
 base="$state/base.qcow2"
@@ -30,6 +34,12 @@ done
 [[ "$display" == headless || "$display" == web ]] || { echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; }
 [[ "$hold" == 0 || "$hold" == 1 ]] || { echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; }
 [[ "$hold" != 1 || "$display" == web ]] || { echo "COREOS_QEMU_HOLD=1 requires web display" >&2; exit 2; }
+[[ "$transient_test" == 0 || "$transient_test" == 1 ]] || { echo "transient test must be 0 or 1" >&2; exit 2; }
+if [[ "$transient_test" == 1 ]]; then
+  [[ "$ssh_port" =~ ^[0-9]+$ ]] && (( ssh_port >= 1024 && ssh_port <= 65535 )) || { echo "Invalid SSH forwarding port" >&2; exit 2; }
+  [[ -r "$ssh_key" && -x "$(dirname "$0")/coreos-guest-transient-qualify.sh" ]] || { echo "Transient tester SSH key/helper is missing" >&2; exit 2; }
+  [[ "$composition" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]] || { echo "Invalid composition account prefix" >&2; exit 2; }
+fi
 if [[ "$display" == web ]]; then
   [[ "$web_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$web_port >= 1024 && 10#$web_port <= 65535 )) || {
     echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2
@@ -72,11 +82,16 @@ podman run --rm --pull=never --volume "$state:/state:rw,z" "$image_id" \
 
 podman_args=(run --rm --pull=never --name "$container_name" --volume "$state:/state:rw,z")
 qemu_command=run
+netdev=user,id=net0
 if [[ "$display" == web ]]; then
   qemu_command=run-web
   # The browser console is reachable only from the host itself. Raw VNC stays
   # on the container's loopback interface and is never published.
   podman_args+=(--publish "127.0.0.1:${web_port}:6080")
+fi
+if [[ "$transient_test" == 1 ]]; then
+  podman_args+=(--publish "127.0.0.1:${ssh_port}:2222")
+  netdev+=",hostfwd=tcp::2222-:22"
 fi
 if [[ "$accel" == kvm ]]; then
   podman_args+=(--device /dev/kvm:/dev/kvm:rw)
@@ -93,7 +108,7 @@ systemd-run --user --quiet --unit="$unit" --collect \
     -m "$ram_mb" -smp "$cpus" \
     -drive if=virtio,format=qcow2,file=/state/overlay.qcow2 \
     -fw_cfg name=opt/com.coreos/config,file=/state/config.ign \
-    -netdev user,id=net0 \
+    -netdev "$netdev" \
     -device virtio-net-pci,netdev=net0 \
     -display none -serial file:/state/serial.log -monitor none \
     -no-reboot
@@ -129,6 +144,10 @@ for ((i=0; i<timeout_seconds; i+=2)); do
     echo "Serial log: $serial"
     if [[ "$display" == web ]]; then
       echo "QEMU browser console: http://127.0.0.1:${web_port}/vnc.html?autoconnect=true&resize=scale"
+    fi
+    if [[ "$transient_test" == 1 ]]; then
+      bash "$(dirname "$0")/coreos-guest-transient-qualify.sh" \
+        127.0.0.1 "$ssh_port" "$ssh_key" "$composition" 10m
     fi
     if [[ "$hold" == 1 ]]; then
       echo "Interactive console is holding the guest. Stop it from another terminal with:"

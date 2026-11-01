@@ -78,6 +78,9 @@ podman_exec=(podman exec)
 if [[ -n "${NIX_CONFIG:-}" ]]; then
   podman_exec+=(-e NIX_CONFIG)
 fi
+if [[ -n "${COREOS_TEST_SSH_PUBLIC_KEY:-}" ]]; then
+  podman_exec+=(-e COREOS_TEST_SSH_PUBLIC_KEY)
+fi
 
 if ! output="$("${podman_exec[@]}" \
   -e "COREOS_CONFIG_DIR=/workspaces/$config_rel" \
