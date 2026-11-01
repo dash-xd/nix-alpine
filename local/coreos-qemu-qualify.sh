@@ -127,6 +127,11 @@ cleanup() {
 trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
+  if grep -Fq 'FAIL: Astrochicken bootstrap script failed at line ' "$serial" 2>/dev/null; then
+    echo "FAIL: Astrochicken guest bootstrap script reported an error" >&2
+    tail -n 160 "$serial" >&2
+    exit 1
+  fi
   if grep -Eq 'Ignition has failed|Entering emergency mode|failed to acquire config|config is not valid' "$serial" 2>/dev/null; then
     echo "FAIL: Fedora CoreOS entered Ignition emergency mode" >&2
     tail -n 160 "$serial" >&2
