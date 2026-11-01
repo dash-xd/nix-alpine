@@ -57,10 +57,18 @@ done
 [[ -S "$runtime_dir/bus" ]] || { echo "Astrochicken user systemd manager did not start" >&2; exit 1; }
 
 as_app() {
-  /usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
+  local output rc
+  if output="$(/usr/sbin/runuser -u "$app_user" -- /usr/bin/env \
     HOME="$home" USER="$app_user" LOGNAME="$app_user" \
     XDG_RUNTIME_DIR="$runtime_dir" \
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" "$@"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" "$@" 2>&1)"; then
+    [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0
+  else
+    rc=$?
+    printf 'FAIL: Astrochicken user command exited %s: %s\n' "$rc" "$*" >/dev/ttyS0 2>/dev/null || true
+    [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0 2>/dev/null || true
+    return "$rc"
+  fi
 }
 
 as_app /usr/bin/systemctl --user daemon-reload
