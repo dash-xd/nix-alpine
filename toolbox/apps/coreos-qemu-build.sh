@@ -64,7 +64,12 @@ cat "$build_log"
 }
 
 staging="$(mktemp -d "$state/.build.XXXXXXXX")"
-trap 'rm -rf -- "$staging"' EXIT
+cleanup_staging() {
+  [[ -n "$staging" && -d "$staging" ]] || return 0
+  chmod u+w "$staging" 2>/dev/null || true
+  rm -rf -- "$staging"
+}
+trap cleanup_staging EXIT
 cp -a "$output/." "$staging/"
 chmod u+w "$staging"
 test -s "$staging/base.qcow2" && test -s "$staging/config.ign" || { echo "Nix artifact bundle is incomplete" >&2; exit 1; }
@@ -73,4 +78,6 @@ printf '%s\n' "$build_key" > "$staging/build-key"
 for artifact in base.qcow2 config.ign artifacts.sha256 build-key; do
   mv -f -- "$staging/$artifact" "$state/$artifact"
 done
+cleanup_staging
+staging=""
 echo "PASS: pinned FCOS disk and workspace-composed Ignition artifact built inside Nix-Alpine at $state"
