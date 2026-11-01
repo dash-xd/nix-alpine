@@ -11,8 +11,8 @@ case "$action" in
   *) echo "ACTION must be inspect or cleanup" >&2; exit 2 ;;
 esac
 case "$resource" in
-  units|containers|networks|images|volumes) ;;
-  *) echo "RESOURCE must be units, containers, networks, images or volumes" >&2; exit 2 ;;
+  units|quadlets|containers|networks|images|volumes) ;;
+  *) echo "RESOURCE must be units, quadlets, containers, networks, images or volumes" >&2; exit 2 ;;
 esac
 [[ "$dry_run" == 0 || "$dry_run" == 1 ]] || { echo "DRY_RUN must be 0 or 1" >&2; exit 2; }
 if [[ "$action" == cleanup && -z "$prefix" ]]; then
@@ -28,7 +28,7 @@ matches_prefix() {
 }
 
 collect_resources() {
-  local name state load active sub description ref image_id
+  local name state load active sub description ref image_id path quadlet_dir
   case "$resource" in
     units)
       while read -r name load active sub description; do
@@ -37,6 +37,30 @@ collect_resources() {
         names+=("$name")
         details["$name"]="$active/$sub"
       done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
+      while read -r name state description; do
+        [[ -n "$name" ]] || continue
+        matches_prefix "$name" || continue
+        if [[ -n "${details[$name]:-}" ]]; then
+          details["$name"]="${details[$name]}; unit-file=$state"
+        else
+          names+=("$name")
+          details["$name"]="unit-file=$state"
+        fi
+      done < <(systemctl --user list-unit-files --type=service --no-legend --no-pager)
+      ;;
+    quadlets)
+      quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+      if [[ -d "$quadlet_dir" ]]; then
+        for path in "$quadlet_dir"/*.container "$quadlet_dir"/*.volume \
+          "$quadlet_dir"/*.network "$quadlet_dir"/*.pod "$quadlet_dir"/*.kube \
+          "$quadlet_dir"/*.image "$quadlet_dir"/*.build; do
+          [[ -f "$path" ]] || continue
+          name="${path##*/}"
+          matches_prefix "$name" || continue
+          names+=("$name")
+          details["$name"]="$(stat -c '%A %U:%G %y' "$path")"
+        done
+      fi
       ;;
     containers)
       while read -r name state; do
@@ -98,6 +122,22 @@ for name in "${names[@]}"; do
         continue
       fi
       systemctl --user reset-failed "$name" >/dev/null 2>&1 || true
+      ;;
+    quadlets)
+      quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+      systemctl --user daemon-reload
+      while read -r unit load active sub description; do
+        [[ "$unit" == "$prefix"* ]] || continue
+        if ! systemctl --user stop "$unit"; then
+          echo "FAIL: unable to stop matching unit $unit; leaving Quadlet definitions in place" >&2
+          exit 1
+        fi
+        systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+      done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
+      for name in "${names[@]}"; do
+        rm -- "$quadlet_dir/$name"
+      done
+      systemctl --user daemon-reload
       ;;
     containers)
       if [[ "${details[$name]}" == running || "${details[$name]}" == paused ]]; then
