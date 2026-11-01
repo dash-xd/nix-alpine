@@ -111,9 +111,13 @@ cleanup() {
 trap cleanup EXIT
 
 for ((i=0; i<timeout_seconds; i+=2)); do
-  if grep -Fq 'PASS: transient systemd unit ran Podman inside Fedora CoreOS' "$serial" 2>/dev/null; then
-    echo "PASS: Fedora CoreOS booted and a transient systemd unit ran Podman"
-    echo "Host systemd unit: $unit.service"
+  if grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; then
+    if grep -Fq "PASS: generated composition user's systemd unit ran rootless Podman" "$serial" 2>/dev/null; then
+      echo "PASS: Fedora CoreOS root bootstrap and generated-user rootless Podman systemd smoke"
+    else
+      echo "PASS: Fedora CoreOS root Podman system bootstrap"
+    fi
+    echo "Host transient systemd unit: $unit.service"
     echo "QEMU Podman image: $image_id"
     echo "Acceleration: $accel"
     echo "Serial log: $serial"
@@ -144,7 +148,7 @@ for ((i=0; i<timeout_seconds; i+=2)); do
   sleep 2
 done
 
-echo "FAIL: CoreOS did not report the transient Podman bootstrap PASS marker" >&2
+echo "FAIL: CoreOS did not report the Podman qualification bootstrap PASS marker" >&2
 systemctl --user --no-pager -l status "$unit.service" >&2 || true
 journalctl --user -u "$unit.service" --no-pager -n 120 >&2 || true
 podman logs "$container_name" >&2 2>/dev/null || true
