@@ -66,7 +66,10 @@ app_command() {
 as_app() {
   local output rc unit diagnostics
   if output="$(app_command "$@" 2>&1)"; then
-    [[ -z "$output" ]] || printf '%s\n' "$output" >/dev/ttyS0
+    if [[ -n "$output" ]]; then
+      printf '%s\n' "$output" >/dev/ttyS0
+      printf '%s\n' "$output"
+    fi
   else
     rc=$?
     printf 'FAIL: Astrochicken user command exited %s: %s\n' "$rc" "$*" >/dev/ttyS0 2>/dev/null || true
@@ -83,6 +86,12 @@ as_app() {
     return "$rc"
   fi
 }
+rootless_podman="$(as_app /usr/bin/podman info --format '{{.Host.Security.Rootless}}')"
+[[ "$rootless_podman" == true ]] || {
+  echo "Astrochicken Podman is not running rootless" >/dev/ttyS0
+  exit 1
+}
+echo "PASS: Astrochicken rootless Podman storage initialized" >/dev/ttyS0
 as_app /usr/bin/systemctl --user daemon-reload
 as_app /usr/bin/systemctl --user start nix-alpine-astrochicken.service
 as_app /usr/bin/systemctl --user is-active --quiet nix-alpine-astrochicken.service
