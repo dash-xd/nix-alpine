@@ -3,12 +3,14 @@ set -Eeuo pipefail
 trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACES="${WORKSPACES:-$HOME/workspace/nix}"
+NIX_ALPINE_HOME="${NIX_ALPINE_HOME:-$HOME/workspace/nix}"
+NIX_ALPINE_STATE_ROOT="${NIX_ALPINE_STATE_ROOT:-$NIX_ALPINE_HOME/.state/nix-alpine}"
+WORKSPACES="${WORKSPACES:-$NIX_ALPINE_HOME}"
 SCOPE="${SCOPE:-dev}"
 IMAGE="${IMAGE:-localhost/nix.xd:latest}"
 REPO="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-RELEASE_STATE="${RELEASE_STATE:-$HOME/.local/state/nix-alpine/releases}"
-STATE_ROOT="${STATE_ROOT:-$HOME/.local/state/nix-alpine/coreos-qemu}"
+RELEASE_STATE="${RELEASE_STATE:-$NIX_ALPINE_STATE_ROOT/releases}"
+STATE_ROOT="${STATE_ROOT:-$NIX_ALPINE_STATE_ROOT/coreos-qemu}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 CONTAINER="nix-alpine-$SCOPE"
 VOLUME="$CONTAINER-store"

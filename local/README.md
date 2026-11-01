@@ -83,6 +83,6 @@ make test-release-integration \
 `make version COMPONENT=skymill` reports the next locally unused CalVer.
 A real integration release uses `make release-candidate` and
 `make release-qualify` under the hood, and writes evidence to
-`~/.local/state/nix-alpine/releases`. A candidate or qualified version is
+`$NIX_ALPINE_HOME/.state/nix-alpine/releases` (default `$HOME/workspace/nix/.state/nix-alpine/releases`). A candidate or qualified version is
 never overwritten by this command. The integration target is not yet
 qualified on the local host; do not use it for production activation.

@@ -6,6 +6,8 @@ SERVICE := $(CONTAINER).service
 VOLUME := $(CONTAINER)-store
 IMAGE ?= localhost/nix.xd:latest
 WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
+NIX_ALPINE_HOME ?= $(HOME)/workspace/nix
+NIX_ALPINE_STATE_ROOT ?= $(NIX_ALPINE_HOME)/.state/nix-alpine
 COMPOSITION_AGNI_SOURCE ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)
 export COMPOSITION_AGNI_SOURCE
 FLAKE ?= .
@@ -25,7 +27,7 @@ RELEASE_SOURCE ?= $(WORKSPACES)/$(notdir $(REPO))
 RELEASE_FLAKE ?= $(FLAKE_PATH)
 RELEASE_TARGET ?= $(HASH)provider-image
 # Release qualification selects its mandatory gate pair by COMPONENT in release-qualify.sh.
-RELEASE_STATE ?= $(HOME)/.local/state/nix-alpine/releases
+RELEASE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/releases
 RELEASE_SOURCE_CONTAINER ?= /workspaces/$(notdir $(REPO))
 RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
 RELEASE_IMPORT_RECORD ?= $(RELEASE_STATE)/$(COMPONENT)/$(RELEASE_VERSION).import.json
@@ -71,7 +73,7 @@ FORCE ?= 0
 # Composition gates dispatch through shell scripts that invoke nested make.
 # Export qualification inputs so every child make uses the caller's scope,
 # workspaces, source pins, and toolbox identity.
-export SCOPE CONTAINER SERVICE VOLUME WORKSPACES
+export SCOPE CONTAINER SERVICE VOLUME WORKSPACES NIX_ALPINE_HOME NIX_ALPINE_STATE_ROOT
 export COMPOSITION GATE LOG LOG_DIR LOG_NAME QUADLET
 export COMPOSITION_AGNI_BRANCH COMPOSITION_AGNI_REV COMPOSITION_AGNI_CHECKOUT COMPOSITION_AGNI_SOURCE
 export COMPOSITION_REDIS_IMAGE COMPOSITION_NGINX_IMAGE COMPOSITION_LOGMA_IMAGE
@@ -568,8 +570,8 @@ ci-archive-import:
 COREOS_MAKE ?= make
 COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
 COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
-COREOS_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/$(SCOPE)
-COREOS_STATE_ROOT ?= $(HOME)/.local/state/nix-alpine/coreos-qemu
+COREOS_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/$(SCOPE)
+COREOS_STATE_ROOT ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu
 COREOS_UNIT ?= fatline-coreos-qemu-$(SCOPE)
 # Guest bootstrap permits up to 35 minutes; leave boot and result-reporting margin.
 COREOS_QEMU_TIMEOUT ?= 2400
@@ -671,7 +673,7 @@ coreos-qemu-clean:
 COREOS_ASTROCHICKEN_SOURCE_DIR ?= $(abspath ..)
 COREOS_ASTROCHICKEN_SOURCE_REV ?= $(shell git -C "$(COREOS_ASTROCHICKEN_SOURCE_DIR)" rev-parse HEAD 2>/dev/null)
 COREOS_ASTROCHICKEN_RESOURCES ?= $(WORKSPACES)/.nix-alpine-astrochicken-resources/$(SCOPE)
-COREOS_ASTROCHICKEN_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/astrochicken/$(SCOPE)
+COREOS_ASTROCHICKEN_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/astrochicken/$(SCOPE)
 COREOS_ASTROCHICKEN_UNIT ?= astrochicken-coreos-qemu-$(SCOPE)
 COREOS_ASTROCHICKEN_EXPECT_MARKER = COREOS_QEMU_STATUS=PASS profile=astrochicken
 COREOS_ASTROCHICKEN_WORKSPACE_FILES ?=
