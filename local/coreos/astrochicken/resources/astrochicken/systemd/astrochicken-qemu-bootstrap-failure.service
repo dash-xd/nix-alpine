@@ -1,0 +1,9 @@
+[Unit]
+Description=Report failed Astrochicken CoreOS qualification bootstrap
+After=astrochicken-bootstrap.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/astrochicken-qemu-bootstrap-failure
+StandardOutput=journal+console
+StandardError=journal+console
