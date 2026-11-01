@@ -43,6 +43,12 @@ generate_identity() {
 app_user="$(generate_identity astrochicken "$state_dir/app-user" /usr/sbin/nologin "" /etc/astrochicken/app-skel)"
 app_home="/var/home/$app_user"
 app_uid="$(/usr/bin/id -u "$app_user")"
+for subid_file in /etc/subuid /etc/subgid; do
+  /usr/bin/awk -F: -v user="$app_user" '$1 == user && $3 >= 65536 { found=1 } END { exit !found }' "$subid_file" || {
+    echo "Astrochicken service user requires a 65536-ID range in $subid_file for rootless Podman" >&2
+    exit 1
+  }
+done
 chown "$app_user:$app_user" "$app_home"
 chmod 0750 "$app_home"
 [[ "$(/usr/bin/stat -c %u "$app_home")" == "$app_uid" ]] || {
