@@ -33,7 +33,7 @@ if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" == 1 ]]; then
   return 0
 fi
 
-runtime_dir="${XDG_RUNTIME_DIR:-/run/user$(/usr/bin/id -u)}"
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(/usr/bin/id -u)}"
 [[ -d "$runtime_dir" ]] || { echo "FAIL: console user systemd runtime is unavailable" >&2; exit 1; }
 
 exec /usr/bin/systemd-run \
