@@ -120,6 +120,25 @@ fi
 }
 
 [[ "$action" == cleanup ]] || exit 0
+
+if [[ "$resource" == quadlets ]]; then
+  quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+  systemctl --user daemon-reload
+  while read -r unit load active sub description; do
+    [[ "$unit" == "$prefix"* ]] || continue
+    if ! systemctl --user stop "$unit"; then
+      echo "FAIL: unable to stop matching unit $unit; leaving Quadlet definitions in place" >&2
+      exit 1
+    fi
+    systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+  done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
+  for name in "${names[@]}"; do
+    rm -- "$quadlet_dir/$name"
+  done
+  systemctl --user daemon-reload
+  exit 0
+fi
+
 for name in "${names[@]}"; do
   case "$resource" in
     units)
@@ -128,22 +147,6 @@ for name in "${names[@]}"; do
         continue
       fi
       systemctl --user reset-failed "$name" >/dev/null 2>&1 || true
-      ;;
-    quadlets)
-      quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
-      systemctl --user daemon-reload
-      while read -r unit load active sub description; do
-        [[ "$unit" == "$prefix"* ]] || continue
-        if ! systemctl --user stop "$unit"; then
-          echo "FAIL: unable to stop matching unit $unit; leaving Quadlet definitions in place" >&2
-          exit 1
-        fi
-        systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
-      done < <(systemctl --user list-units --all --type=service --no-legend --no-pager)
-      for name in "${names[@]}"; do
-        rm -- "$quadlet_dir/$name"
-      done
-      systemctl --user daemon-reload
       ;;
     containers)
       if [[ "${details[$name]}" == running || "${details[$name]}" == paused ]]; then
