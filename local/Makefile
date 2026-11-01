@@ -588,7 +588,8 @@ COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/
 COREOS_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/$(SCOPE)
 COREOS_STATE_ROOT ?= $(HOME)/.local/state/nix-alpine/coreos-qemu
 COREOS_UNIT ?= fatline-coreos-qemu-$(SCOPE)
-COREOS_QEMU_TIMEOUT ?= 600
+# Guest bootstrap permits up to 35 minutes; leave boot and result-reporting margin.
+COREOS_QEMU_TIMEOUT ?= 2400
 COREOS_QEMU_RAM_MB ?= 3072
 COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
@@ -689,7 +690,7 @@ COREOS_ASTROCHICKEN_SOURCE_REV ?= $(shell git -C "$(COREOS_ASTROCHICKEN_SOURCE_D
 COREOS_ASTROCHICKEN_RESOURCES ?= $(WORKSPACES)/.nix-alpine-astrochicken-resources/$(SCOPE)
 COREOS_ASTROCHICKEN_STATE ?= $(HOME)/.local/state/nix-alpine/coreos-qemu/astrochicken/$(SCOPE)
 COREOS_ASTROCHICKEN_UNIT ?= astrochicken-coreos-qemu-$(SCOPE)
-COREOS_ASTROCHICKEN_EXPECT_MARKER = PASS: Nix-Alpine Quadlet, writable workspace mount, mounted flake evaluation, and persistent Nix store
+COREOS_ASTROCHICKEN_EXPECT_MARKER = COREOS_QEMU_STATUS=PASS profile=astrochicken
 COREOS_ASTROCHICKEN_WORKSPACE_FILES ?=
 export COREOS_ASTROCHICKEN_SOURCE_DIR COREOS_ASTROCHICKEN_SOURCE_REV COREOS_ASTROCHICKEN_RESOURCES COREOS_ASTROCHICKEN_STATE COREOS_ASTROCHICKEN_UNIT COREOS_ASTROCHICKEN_WORKSPACE_FILES COREOS_QEMU_CONSOLE_LOGIN
 
