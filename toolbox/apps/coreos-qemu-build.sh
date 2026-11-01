@@ -66,6 +66,7 @@ cat "$build_log"
 staging="$(mktemp -d "$state/.build.XXXXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
 cp -a "$output/." "$staging/"
+chmod u+w "$staging"
 test -s "$staging/base.qcow2" && test -s "$staging/config.ign" || { echo "Nix artifact bundle is incomplete" >&2; exit 1; }
 (cd "$staging" && sha256sum base.qcow2 config.ign > artifacts.sha256)
 printf '%s\n' "$build_key" > "$staging/build-key"
