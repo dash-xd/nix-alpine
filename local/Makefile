@@ -699,6 +699,7 @@ qualify-coreos-astrochicken:
 	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-astrochicken" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-astrochicken LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
+	  $(COREOS_MAKE) ensure-coreos-state-mount; \
 	  bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"; \
 	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "$(NIX_ALPINE_TOOLBOX_FLAKE)#astrochicken-inputs" -- \
 	    /workspaces "/workspaces/$(patsubst $(WORKSPACES)/%,%,$(COREOS_ASTROCHICKEN_SOURCE_DIR))" "$(COREOS_ASTROCHICKEN_SOURCE_REV)" \
