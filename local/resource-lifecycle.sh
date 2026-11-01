@@ -108,6 +108,12 @@ for name in "${names[@]}"; do
   printf '  %-64s %s\n' "$name" "${details[$name]}"
 done
 
+if [[ "$action" == cleanup && "$resource" == units ]]; then
+  echo "Cleanup stops matching loaded user services and clears failed state; unit definitions remain installed."
+elif [[ "$action" == cleanup && "$resource" == quadlets ]]; then
+  echo "Cleanup stops matching loaded user services, removes the selected Quadlet files, and reloads the user manager; containers, volumes and images are separate."
+fi
+
 [[ "$action" != cleanup ]] || [[ "$dry_run" == 0 ]] || {
   echo "DRY_RUN=1: no changes; rerun with DRY_RUN=0 to apply this scoped cleanup."
   exit 0
