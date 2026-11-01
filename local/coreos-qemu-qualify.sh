@@ -113,7 +113,13 @@ trap cleanup EXIT
 for ((i=0; i<timeout_seconds; i+=2)); do
   if grep -Fq 'PASS: CoreOS qualification bootstrap succeeded' "$serial" 2>/dev/null; then
     if grep -Fq "PASS: generated composition user's systemd unit ran rootless Podman" "$serial" 2>/dev/null; then
-      echo "PASS: Fedora CoreOS root bootstrap and generated-user rootless Podman systemd smoke"
+      if grep -Fq "PASS: generated local login is read-only outside its workspace" "$serial" 2>/dev/null; then
+        echo "PASS: Fedora CoreOS root bootstrap, composition rootless Podman, and read-only local console login"
+      else
+        echo "FAIL: local console read-only qualification marker is missing" >&2
+        tail -n 160 "$serial" >&2
+        exit 1
+      fi
     else
       echo "PASS: Fedora CoreOS root Podman system bootstrap"
     fi
