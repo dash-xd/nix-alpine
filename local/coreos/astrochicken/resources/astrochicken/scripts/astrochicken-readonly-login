@@ -6,8 +6,6 @@ esac
 
 login_user="$(/usr/bin/id -un 2>/dev/null || true)"
 [[ "$login_user" =~ ^local-[a-f0-9]{12}$ ]] || return 0
-runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(/usr/bin/id -u)}"
-[[ -d "$runtime_dir" ]] || { echo "FAIL: console user systemd runtime is unavailable" >&2; exit 1; }
 
 if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" == 1 ]]; then
   app_user="$(</run/astrochicken/app-user)"
@@ -34,6 +32,9 @@ if [[ "${ASTROCHICKEN_READONLY_SESSION:-0}" == 1 ]]; then
   printf 'PASS: local login is read-only outside its workspace (%s)\n' "$HOME"
   return 0
 fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user$(/usr/bin/id -u)}"
+[[ -d "$runtime_dir" ]] || { echo "FAIL: console user systemd runtime is unavailable" >&2; exit 1; }
 
 exec /usr/bin/systemd-run \
   --user --quiet --pty --wait --collect \
