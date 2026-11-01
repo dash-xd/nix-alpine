@@ -85,13 +85,12 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
 	@echo "make qualify-coreos-astrochicken COREOS_QEMU_DISPLAY=headless|web LOG=1 (CoreOS systemd-user Nix-Alpine toolbox; no SSH transient runner)"
-	@echo "make clean-coreos-astrochicken SCOPE=... (stop Astrochicken QEMU unit and discard its overlay)"
+	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
-	@echo "make cleanup-composition MODE=inspect|networks|containers|all (disposable Fatline resources; inspect is default)"
-	@echo "make cleanup-composition MODE=networks DRY_RUN=0 (remove unused stale qualification networks)"
-	@echo "make inspect-inventory COMPONENT=fatline (host inventory; read-only)"
-	@echo "make fatline-inventory FATLINE_IMAGE_FILTER=redis|logma FATLINE_CONFIG=~/.config/fatline (host-only)"
+	@echo "make inventory RESOURCE=units|containers|networks|images|volumes PREFIX=... (read-only; omit PREFIX for all)"
+	@echo "make cleanup RESOURCE=... PREFIX=... DRY_RUN=1|0 (literal prefix; dry-run by default)"
+
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|production-acl|strict-readiness LOG=1 (timestamped log + exit code)"
 	@echo "make qualify-composition-skymill-provider QUADLET=1 LOG=1 (Skymill against systemd Quadlets; timestamped log)"
 	@echo "make qualify-composition COMPOSITION=logma-image (sync, build and import Logma provider image; not release qualification)"
@@ -538,34 +537,16 @@ qualify-deployment-socket:
 	@$(MAKE) qualify-deployment SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 	@bash ./qualify-deployment-socket.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_REDIS_IMAGE)"
 
-# Host-only inspection. FILTER is a POSIX extended regex for image names.
-# Cleanup is opt-in, scoped to disposable fatline-composition-* resources.
-MODE ?= inspect
+# Generic host resource inspection and scoped cleanup. Prefix matching is literal;
+# cleanup requires a prefix and defaults to a dry run.
+RESOURCE ?= containers
+PREFIX ?=
 DRY_RUN ?= 1
-.PHONY: cleanup-composition cleanup-composition-networks cleanup-composition-containers
-cleanup-composition:
-	@bash ./cleanup-composition.sh "$(MODE)" "$(DRY_RUN)"
-cleanup-composition-networks:
-	@$(MAKE) cleanup-composition MODE=networks DRY_RUN="$(DRY_RUN)"
-cleanup-composition-containers:
-	@$(MAKE) cleanup-composition MODE=containers DRY_RUN="$(DRY_RUN)"
-
-FATLINE_IMAGE_FILTER ?= redis|logma|skymill|nginx
-FATLINE_CONFIG ?= $(HOME)/.config/fatline
-FATLINE_UNIT_PATTERN ?= fatline*
-.PHONY: inspect-inventory fatline-inventory
-inspect-inventory:
-	@case "$(COMPONENT)" in fatline) $(MAKE) fatline-inventory FATLINE_IMAGE_FILTER="$(FATLINE_IMAGE_FILTER)" FATLINE_CONFIG="$(FATLINE_CONFIG)" FATLINE_UNIT_PATTERN="$(FATLINE_UNIT_PATTERN)";; *) echo "Unsupported inventory component: $(COMPONENT)" >&2; exit 2;; esac
-
-fatline-inventory:
-	@printf '\n=== Available images ===\n'
-	@podman images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E -- '$(FATLINE_IMAGE_FILTER)' || true
-	@printf '\n=== Existing Fatline services ===\n'
-	@systemctl --user list-units '$(FATLINE_UNIT_PATTERN)' --all --no-pager
-	@printf '\n=== Existing recovery executables ===\n'
-	@for f in "$(FATLINE_CONFIG)/reconcile" "$(FATLINE_CONFIG)/readiness/redis" "$(FATLINE_CONFIG)/readiness/logma" "$(FATLINE_CONFIG)/readiness/skymill"; do \
-	  if [[ -x "$$f" ]]; then echo "PRESENT: $$f"; else echo "MISSING: $$f"; fi; \
-	done
+.PHONY: inventory cleanup
+inventory:
+	@bash ./resource-lifecycle.sh inspect "$(RESOURCE)" "$(PREFIX)"
+cleanup:
+	@bash ./resource-lifecycle.sh cleanup "$(RESOURCE)" "$(PREFIX)" "$(DRY_RUN)"
 
 # Archive parity between local qualification and disposable CI runners.
 # Archive paths contain only compressed image transports and a verified manifest.
@@ -618,7 +599,7 @@ COREOS_GUEST_RUNTIME ?= 10m
 COREOS_GUEST_PAYLOAD ?= ./coreos-guest-transient-smoke.sh
 export COREOS_GUEST_SSH_USER
 
-.PHONY: qualify-coreos-qemu qualify-coreos-astrochicken clean-coreos-astrochicken qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
+.PHONY: qualify-coreos-qemu qualify-coreos-astrochicken qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
@@ -716,5 +697,3 @@ qualify-coreos-astrochicken:
 	    COREOS_QEMU_EXPECT_MARKER="$(COREOS_ASTROCHICKEN_EXPECT_MARKER)" LOG=0; \
 	fi
 
-clean-coreos-astrochicken:
-	@$(COREOS_MAKE) --no-print-directory coreos-qemu-clean COREOS_UNIT="$(COREOS_ASTROCHICKEN_UNIT)" COREOS_STATE="$(COREOS_ASTROCHICKEN_STATE)"
