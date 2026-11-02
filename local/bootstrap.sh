@@ -38,10 +38,10 @@ WORKSPACES="$(realpath "$WORKSPACES")"
 [[ "$WORKSPACES" != *[[:space:]]* ]] || die "Workspace path cannot contain whitespace"
 [[ -f "$REPO/Dockerfile" ]] || die "Missing Dockerfile in $REPO"
 log "Building toolbox image"
-podman build \\
-  --label "org.opencontainers.image.version=$NIX_ALPINE_VERSION" \\
-  --label "org.opencontainers.image.revision=$NIX_ALPINE_SOURCE_REV" \\
-  --label "io.nix-alpine.workspace=$WORKSPACE_KEY" \\
+podman build \
+  --label "org.opencontainers.image.version=$NIX_ALPINE_VERSION" \
+  --label "org.opencontainers.image.revision=$NIX_ALPINE_SOURCE_REV" \
+  --label "io.nix-alpine.workspace=$WORKSPACE_KEY" \
   -t "$IMAGE" "$REPO"
 
 render() {

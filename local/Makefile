@@ -239,10 +239,10 @@ diagnose-toolbox:
 
 qualify-toolbox:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
-	@if [[ "$(LOG)" == 1 ]]; then \\
-	  bash ./logged-run.sh "$(LOG_DIR)" "toolbox-smoke" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \\
-	else \\
-	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(QUALIFY_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \\
+	@if [[ "$(LOG)" == 1 ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "toolbox-smoke" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \
+	else \
+	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(QUALIFY_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \
 	fi
 
 # Explicit component gate entrypoints; reuse the existing Nix-Alpine runner.
