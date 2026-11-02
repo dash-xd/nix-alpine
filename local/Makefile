@@ -42,7 +42,7 @@ TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 NIX_ALPINE_CHECKOUT ?= $(shell basename "$(NIX_ALPINE_ROOT)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
 NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/toolbox
-TOOLBOX_SMOKE_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/release
+QUALIFY_FLAKE ?= $(NIX_ALPINE_TOOLBOX_FLAKE)
 REPO ?=
 BRANCH ?= main
 # Shared component pins for local and Actions qualification.
@@ -242,7 +242,7 @@ qualify-toolbox:
 	@if [[ "$(LOG)" == 1 ]]; then \\
 	  bash ./logged-run.sh "$(LOG_DIR)" "toolbox-smoke" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \\
 	else \\
-	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(TOOLBOX_SMOKE_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \\
+	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(QUALIFY_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \\
 	fi
 
 # Explicit component gate entrypoints; reuse the existing Nix-Alpine runner.
