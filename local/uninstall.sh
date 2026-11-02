@@ -4,9 +4,9 @@ trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 SCOPE="${SCOPE:-dev}"
 IMAGE="${IMAGE:-localhost/nix.xd:latest}"
 [[ "$SCOPE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || { echo "Invalid scope" >&2; exit 2; }
-CONTAINER="nix-alpine-$SCOPE"
-VOLUME="$CONTAINER-store"
-SERVICE="$CONTAINER.service"
+CONTAINER="${CONTAINER:-nix-alpine-$SCOPE}"
+VOLUME="${VOLUME:-$CONTAINER-store}"
+SERVICE="${SERVICE:-$CONTAINER.service}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 
 echo "Removing scope: $SCOPE"
@@ -21,5 +21,5 @@ if ! podman ps -a --format '{{.Image}}' | grep -Fxq "$IMAGE"; then
 else
   echo "Keeping image $IMAGE: still referenced by a container"
 fi
-systemctl --user reset-failed
+systemctl --user reset-failed "$SERVICE" 2>/dev/null || true
 echo "Removed Nix-Alpine scope $SCOPE; source files and other workspaces preserved."
