@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 SCOPE ?= dev
 WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
-NIX_ALPINE_ROOT := $(abspath ..)
+NIX_ALPINE_ROOT := $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/..)
 NIX_ALPINE_SOURCE_REV ?= $(shell git -C "$(NIX_ALPINE_ROOT)" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr '-' '.')
 NIX_ALPINE_VERSION ?= $(if $(NIX_ALPINE_SOURCE_DATE),$(NIX_ALPINE_SOURCE_DATE),unversioned)-$(NIX_ALPINE_SOURCE_REV)
@@ -40,7 +40,7 @@ PACKAGE ?= ./...
 CGO ?= 0
 TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
-NIX_ALPINE_CHECKOUT ?= $(notdir $(abspath ..))
+NIX_ALPINE_CHECKOUT ?= $(shell basename "$(NIX_ALPINE_ROOT)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
 NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/toolbox
 TOOLBOX_SMOKE_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/release
 REPO ?=
