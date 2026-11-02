@@ -280,7 +280,7 @@ qualify-plan:
 	  [[ "$(PLAN_RUNNER)" != /* && "$(PLAN_RUNNER)" != *..* ]] || { echo "PLAN_RUNNER must be relative without traversal" >&2; exit 2; }; \
 	  runner="$$plan_root/$(PLAN_RUNNER)"; test -f "$$runner" || { echo "Plan entrypoint is missing: $$runner" >&2; exit 2; }; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash "$runner" --plan "$plan_file" --gate "$(PLAN_GATE)" --workspaces "$(WORKSPACES)" --toolbox "$(CONTAINER)" --nix-alpine-local "$(NIX_ALPINE_ROOT)/local" --scope "$(SCOPE)"; \
+	  bash "$runner" --plan "$plan_file" --gate "$(PLAN_GATE)" --workspaces "$(WORKSPACES)" --toolbox "$(CONTAINER)" --nix-alpine-local "$(NIX_ALPINE_ROOT)/local" --scope "$(SCOPE)" --agni-checkout "$(PLAN_CHECKOUT)"; \
 	fi
 
 
