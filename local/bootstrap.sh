@@ -65,7 +65,7 @@ render "$SCRIPT_DIR/quadlet/nix-alpine.container" "$QUADLET_DIR/$CONTAINER.conta
 systemctl --user daemon-reload
 systemctl --user restart "$SERVICE"
 log "Trusting mounted workspace Git checkouts inside the toolbox"
-podman exec "$CONTAINER" git config --global --add safe.directory '/workspaces/*'
+podman exec "$CONTAINER" bash "/workspaces/$NIX_ALPINE_CHECKOUT/local/trust-workspace-git.sh" /workspaces
 log "Verifying Nix"
 podman exec "$CONTAINER" nix --version
 cat <<EOF

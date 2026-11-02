@@ -80,7 +80,7 @@ if [[ -n "$manifest_in_container" ]]; then
   podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
 fi
 if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
-podman_args+=("$image" bash -euc 'git config --global --add safe.directory "/workspaces/*"; exec "$@"' -- \
+podman_args+=("$image" bash -euc 'bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
   nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
   --command bash "/workspaces/$checkout/$runner" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
