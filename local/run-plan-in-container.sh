@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-[[ $# == 9 ]] || {
-  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE" >&2
+[[ $# == 9 || $# == 10 ]] || {
+  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE [ARTIFACT_MANIFEST]" >&2
   exit 2
 }
 image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 runner=$7 gate=$8 scope=$9
+artifact_manifest=${10:-}
 umask 077
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -21,6 +22,14 @@ nix_alpine_rel=$(realpath --relative-to="$workspaces" "$nix_alpine_root")
 [[ "$nix_alpine_rel" != .. && "$nix_alpine_rel" != ../* ]] || die "Nix-Alpine must be inside WORKSPACES"
 [[ -f "$workspaces/$checkout/$plan_file" ]] || die "Missing plan: $workspaces/$checkout/$plan_file"
 [[ -f "$workspaces/$checkout/$runner" ]] || die "Missing plan runner: $workspaces/$checkout/$runner"
+manifest_in_container=
+if [[ -n "$artifact_manifest" ]]; then
+  artifact_manifest=$(realpath "$artifact_manifest")
+  manifest_rel=$(realpath --relative-to="$workspaces" "$artifact_manifest")
+  [[ "$manifest_rel" != .. && "$manifest_rel" != ../* ]] || die "Artifact manifest must be inside WORKSPACES"
+  [[ -s "$artifact_manifest" ]] || die "Artifact manifest is empty: $artifact_manifest"
+  manifest_in_container=/run/plan-artifacts/manifest.tsv
+fi
 
 runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
@@ -53,7 +62,7 @@ trap 'exit 143' TERM
 echo "Nix-Alpine runtime: $task"
 echo "Plan: $workspaces/$checkout/$plan_file (gate: $gate)"
 # The host-identical alias lets Podman resolve bind sources created by the plan.
-podman run --rm --name "$task" \
+podman_args=(run --rm --name "$task" \
   --userns=keep-id:uid=1000,gid=1000 --network host --cap-drop ALL --security-opt no-new-privileges \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
@@ -66,10 +75,18 @@ podman run --rm --name "$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env TMPDIR="$run_tmp" \
-  --workdir "/workspaces/$checkout" \
-  "$image" nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
+  --workdir "/workspaces/$checkout")
+if [[ -n "$manifest_in_container" ]]; then
+  podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
+fi
+if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
+podman_args+=("$image" nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
   --command bash "/workspaces/$checkout/$runner" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
   --workspaces /workspaces --toolbox "$task" \
   --nix-alpine-local "/workspaces/$nix_alpine_rel/local" \
-  --scope "$scope" --agni-checkout "$checkout"
+  --scope "$scope" --agni-checkout "$checkout")
+if [[ -n "$manifest_in_container" ]]; then
+  podman_args+=(--artifact-manifest "$manifest_in_container")
+fi
+podman "${podman_args[@]}"

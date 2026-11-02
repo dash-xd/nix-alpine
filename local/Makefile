@@ -264,11 +264,12 @@ PLAN_CHECKOUT ?=
 PLAN_FILE ?=
 PLAN_RUNNER ?=
 PLAN_GATE ?= $(GATE)
+PLAN_ARTIFACT_MANIFEST ?=
 qualify-plan:
 	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_GATE="$(PLAN_GATE)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_GATE="$(PLAN_GATE)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
 	else \
 	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" WORKSPACES="$(WORKSPACES)"; \
 	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$(WORKSPACES)/$(PLAN_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
@@ -277,7 +278,7 @@ qualify-plan:
 	  [[ "$(PLAN_RUNNER)" != /* && "$(PLAN_RUNNER)" != *..* ]] || { echo "PLAN_RUNNER must be relative without traversal" >&2; exit 2; }; \
 	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_RUNNER)" || { echo "Plan entrypoint is missing: $(PLAN_RUNNER)" >&2; exit 2; }; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_RUNNER)" "$(PLAN_GATE)" "$(SCOPE)"; \
+	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_RUNNER)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)"; \
 	fi
 
 
