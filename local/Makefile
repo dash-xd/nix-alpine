@@ -4,7 +4,7 @@ SCOPE ?= dev
 WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
 NIX_ALPINE_ROOT := $(abspath ..)
 NIX_ALPINE_SOURCE_REV ?= $(shell git -C "$(NIX_ALPINE_ROOT)" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr -d '-')
+NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr '-' '.')
 NIX_ALPINE_VERSION ?= $(if $(NIX_ALPINE_SOURCE_DATE),$(NIX_ALPINE_SOURCE_DATE),unversioned)-$(NIX_ALPINE_SOURCE_REV)
 WORKSPACE_KEY ?= $(shell basename "$(WORKSPACES)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
 CONTAINER ?= nix-alpine-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(NIX_ALPINE_CHECKOUT)-$(SCOPE)
