@@ -63,7 +63,7 @@ echo "Nix-Alpine runtime: $task"
 echo "Plan: $workspaces/$checkout/$plan_file (gate: $gate)"
 # The host-identical alias lets Podman resolve bind sources created by the plan.
 podman_args=(run --rm --name "$task" \
-  --userns=keep-id:uid=1000,gid=1000 --network host --cap-drop ALL --security-opt no-new-privileges \
+  --userns=keep-id --network host --cap-drop ALL --security-opt no-new-privileges \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
   --volume "$workspaces:$workspaces:rw" \
