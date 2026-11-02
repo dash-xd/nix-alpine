@@ -68,7 +68,7 @@ COMPOSITION ?= fatline
 GATE ?= all
 LOG ?= 0
 LOG_DIR ?= $(CURDIR)/qualification-logs
-LOG_NAME ?= $(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$(firstword $(MAKECMDGOALS)))
+LOG_NAME ?= $(if $(filter qualify-plan,$(MAKECMDGOALS)),plan-$(PLAN_CHECKOUT)-$(PLAN_GATE),$(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$(firstword $(MAKECMDGOALS))))
 QUADLET ?= 0
 QUADLET_PROVIDER_ENV = $(if $(filter 1,$(QUADLET)),COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1)
 QUALIFY_AGNI ?= $(WORKSPACES)/agni
@@ -89,13 +89,14 @@ export COMPOSITION_TIMER_STATE_MODE COMPOSITION_STRICT_READINESS_MODE COMPOSITIO
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
+.PHONY: qualify-plan qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
 	@echo "make qualify-coreos-profile COREOS_PROFILE=name COREOS_PROFILE_BRANCH=branch LOG=1 (caller-owned profile, generic QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
+	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=name PLAN_FILE=path PLAN_RUNNER=path GATE=all (generic plan dispatcher)"
 	@echo "make inventory RESOURCE=units|quadlets|containers|networks|images|volumes|paths PREFIX=... PATHS=... PATH_DEPTH=... (read-only)"
 	@echo "make cleanup RESOURCE=... PREFIX=... DRY_RUN=1|0 (literal prefix; dry-run by default)"
 
@@ -257,6 +258,30 @@ qualify-service:
 # Explicit qualification registry; aliases below remain independently callable.
 qualify:
 	@case "$(LEVEL)" in composition) $(MAKE) qualify-composition COMPOSITION="$(COMPOSITION)" GATE="$(GATE)";; process) $(MAKE) qualify-process;; service) $(MAKE) qualify-service;; *) echo "LEVEL must be process, service or composition" >&2; exit 2;; esac
+
+PLAN_REPO ?=
+PLAN_BRANCH ?= main
+PLAN_REV ?=
+PLAN_CHECKOUT ?=
+PLAN_FILE ?=
+PLAN_RUNNER ?=
+PLAN_GATE ?= $(GATE)
+qualify-plan:
+	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
+	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
+	elif [[ "$(LOG)" == 1 ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_GATE="$(PLAN_GATE)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
+	else \
+	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" WORKSPACES="$(WORKSPACES)"; \
+	  plan_root="$(WORKSPACES)/$(PLAN_CHECKOUT)"; \
+	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$plan_root" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
+	  plan_file="$plan_root/$(PLAN_FILE)"; test -f "$plan_file" || { echo "Plan file not found: $plan_file" >&2; exit 2; }; \
+		  [[ "$(PLAN_RUNNER)" != /* && "$(PLAN_RUNNER)" != *..* ]] || { echo "PLAN_RUNNER must be a relative path without traversal" >&2; exit 2; }; \
+	  runner="$plan_root/$(PLAN_RUNNER)"; test -f "$runner" || { echo "Plan entrypoint is missing: $runner" >&2; exit 2; }; \
+	  if ! podman container exists "$(CONTAINER)" || [[ "$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
+	  bash "$runner" --plan "$plan_file" --gate "$(PLAN_GATE)" --workspaces "$(WORKSPACES)" --toolbox "$(CONTAINER)" --nix-alpine-local "$(NIX_ALPINE_ROOT)/local" --scope "$(SCOPE)"; \
+	fi
+
 
 # Composition registry dispatches Fatline runtime gates and component image workflows.\n# Component image preparation does not imply release qualification.
 qualify-composition:
