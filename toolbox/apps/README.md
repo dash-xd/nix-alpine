@@ -5,7 +5,8 @@ the scoped CoreOS state directory are shared mounts, so generated Butane
 inputs and QEMU artifacts are written directly where the host runtime needs
 them.
 
-Applications currently include Astrochicken Butane/resource assembly, the
-CoreOS QEMU artifact build and checksum/reuse logic, and Fatline ACL pin
-validation. Keep host-side scripts limited to mount/path translation and
-Podman/systemd lifecycle operations.
+The CoreOS QEMU artifact builder is a generic Nix/flake tool. Caller-owned
+qualification profiles and policies belong in their owning infrastructure
+repository; Agni currently supplies the Astrochicken profile and Fatline ACL
+policy check. Keep application-specific profiles and gate logic out of this
+toolbox flake.

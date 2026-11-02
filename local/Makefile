@@ -92,7 +92,7 @@ FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 .PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
-	@echo "make qualify-coreos-astrochicken COREOS_QEMU_DISPLAY=headless|web LOG=1 (CoreOS systemd-user Nix-Alpine toolbox; no SSH transient runner)"
+	@echo "make qualify-coreos-profile COREOS_PROFILE=name COREOS_PROFILE_BRANCH=branch LOG=1 (caller-owned profile, generic QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
@@ -339,7 +339,7 @@ qualify-composition-acl-isolation:
 	@$(MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"
 	@$(MAKE) qualify-composition-preflight SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)"
 	@if [[ "$(COMPOSITION_PRODUCTION_ACL_MODE)" == 1 ]]; then \
-	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "$(NIX_ALPINE_TOOLBOX_FLAKE)#check-fatline-acl-pins" -- \
+	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/local/fatline#check-acl-pins" -- \
 	    "/workspaces/$(COMPOSITION_AGNI_CHECKOUT)/local/fatline/acl-policy.json" "$(COMPOSITION_LOGMA_REV)" "$(COMPOSITION_SKYMILL_REV)"; \
 	fi
 	@COMPOSITION_AGNI_RECONCILE_MODE="$(COMPOSITION_PRODUCTION_ACL_MODE)" COMPOSITION_ACL_ISOLATION_MODE=1 $(QUADLET_PROVIDER_ENV) COMPOSITION_AGNI_CHECKOUT="$(COMPOSITION_AGNI_CHECKOUT)" bash ./fatline-composition-runtime.sh "$(CONTAINER)" "$(COMPOSITION_REDIS_IMAGE)" "$(COMPOSITION_NGINX_IMAGE)" "$(COMPOSITION_LOGMA_IMAGE)"
@@ -583,26 +583,26 @@ ci-archive-import:
 # explicit, hashed Nix inputs; guest checks root bootstrap and optional
 # generated-user rootless Podman under systemd.
 COREOS_MAKE ?= make
-COREOS_CONFIG_DIR ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/butane
-COREOS_RESOURCES ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local/resources
+COREOS_CONFIG_DIR ?=
+COREOS_RESOURCES ?=
 COREOS_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/$(SCOPE)
 COREOS_STATE_ROOT ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu
-COREOS_UNIT ?= fatline-coreos-qemu-$(SCOPE)
+COREOS_UNIT ?= coreos-qemu-$(SCOPE)
 # Guest bootstrap permits up to 35 minutes; leave boot and result-reporting margin.
 COREOS_QEMU_TIMEOUT ?= 2400
 COREOS_QEMU_RAM_MB ?= 3072
 COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
-COREOS_QEMU_IMAGE ?= localhost/fatline-qemu-runner:44.20261012.3.1
+COREOS_QEMU_IMAGE ?= localhost/agni-coreos-qemu-runner:44.20261012.3.1
 COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_QEMU_CONSOLE_LOGIN ?= 0
 COREOS_QEMU_HOLD ?= 0
 COREOS_QEMU_TRANSIENT_TESTER ?= 0
 COREOS_QEMU_SSH_PORT ?= 2222
-COREOS_COMPOSITION_NAME ?= $(COMPOSITION)
+COREOS_COMPOSITION_NAME ?=
 COREOS_QEMU_EXPECT_MARKER ?=
-COREOS_CONFIG_NAME ?= $(if $(filter 1,$(COREOS_QEMU_CONSOLE_LOGIN)),fatline-bootstrap-console.bu,fatline-bootstrap.bu)
+COREOS_CONFIG_NAME ?=
 COREOS_REUSE ?= 1
 export COREOS_CONFIG_DIR COREOS_RESOURCES COREOS_CONFIG_NAME COREOS_STATE COREOS_STATE_ROOT COREOS_UNIT COREOS_QEMU_TIMEOUT COREOS_QEMU_RAM_MB COREOS_QEMU_CPUS COREOS_QEMU_ACCEL COREOS_QEMU_IMAGE COREOS_QEMU_DISPLAY COREOS_QEMU_WEB_PORT COREOS_QEMU_CONSOLE_LOGIN COREOS_QEMU_HOLD COREOS_QEMU_TRANSIENT_TESTER COREOS_QEMU_SSH_PORT COREOS_COMPOSITION_NAME COREOS_QEMU_EXPECT_MARKER COREOS_REUSE COREOS_TEST_SSH_PUBLIC_KEY
 
@@ -618,9 +618,24 @@ COREOS_GUEST_RUNTIME ?= 10m
 COREOS_GUEST_PAYLOAD ?= ./coreos-guest-transient-smoke.sh
 export COREOS_GUEST_SSH_USER
 
-.PHONY: qualify-coreos-qemu qualify-coreos-astrochicken qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
+# A qualification profile is owned by its caller (currently Agni). This Make
+# target only stages the selected profile and supervises the generic QEMU host
+# adapter.
+COREOS_PROFILE ?=
+COREOS_PROFILE_BRANCH ?=
+COREOS_PROFILE_REV ?=
+COREOS_PROFILE_CHECKOUT ?= agni-profile
+COREOS_PROFILE_OUTPUT ?= $(WORKSPACES)/.coreos-profiles/$(COREOS_PROFILE)/$(SCOPE)
+COREOS_PROFILE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/$(COREOS_PROFILE)/$(SCOPE)
+COREOS_PROFILE_UNIT ?= coreos-qemu-$(COREOS_PROFILE)-$(SCOPE)
+COREOS_PROFILE_WORKSPACE_FILES ?=
+COREOS_PROFILE_CONSOLE_LOGIN ?=
+export COREOS_PROFILE_WORKSPACE_FILES COREOS_PROFILE_CONSOLE_LOGIN
+
+.PHONY: qualify-coreos-qemu qualify-coreos-profile qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
+	@if [[ -z "$(COREOS_CONFIG_DIR)" || -z "$(COREOS_RESOURCES)" || -z "$(COREOS_CONFIG_NAME)" || -z "$(COREOS_COMPOSITION_NAME)" ]]; then echo "Set the profile inputs through qualify-coreos-profile or provide COREOS_CONFIG_DIR, COREOS_RESOURCES, COREOS_CONFIG_NAME, and COREOS_COMPOSITION_NAME" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
 	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
@@ -661,6 +676,24 @@ qualify-coreos-guest-transient:
 	@for command in ssh scp; do command -v "$$command" >/dev/null || { echo "Missing host command: $$command" >&2; exit 2; }; done
 	@if [[ "$(LOG)" == 1 ]]; then bash ./logged-run.sh "$(LOG_DIR)" "coreos-guest-transient" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-guest-transient LOG=0; \
 	else bash ./coreos-guest-transient-qualify.sh "$(COREOS_GUEST_HOST)" "$(COREOS_GUEST_PORT)" "$(COREOS_GUEST_KEY)" "$(COREOS_GUEST_COMPOSITION)" "$(COREOS_GUEST_RUNTIME)" "$(COREOS_GUEST_PAYLOAD)"; fi
+
+qualify-coreos-profile:
+	@test -n "$(COREOS_PROFILE)" || { echo "COREOS_PROFILE is required (the profile must exist in the selected Agni checkout)" >&2; exit 2; }
+	@test -n "$(COREOS_PROFILE_BRANCH)" || { echo "COREOS_PROFILE_BRANCH is required" >&2; exit 2; }
+	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(LOG)" == 1 ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-profile-$(COREOS_PROFILE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-profile COREOS_PROFILE="$(COREOS_PROFILE)" LOG=0; \
+	else \
+	  set -Eeuo pipefail; \
+	  $(COREOS_MAKE) ensure-coreos-state-mount; \
+	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
+	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COREOS_PROFILE_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COREOS_PROFILE_CHECKOUT)"; \
+	  agni_rev="$$(git -C "$(WORKSPACES)/$(COREOS_PROFILE_CHECKOUT)" rev-parse HEAD)"; \
+	  if [[ -n "$(COREOS_PROFILE_REV)" && "$$agni_rev" != "$(COREOS_PROFILE_REV)" ]]; then echo "Agni source does not match requested revision $(COREOS_PROFILE_REV)" >&2; exit 1; fi; \
+	  nix_rev="$$(git -C "$(NIX_ALPINE_ROOT)" rev-parse HEAD)"; \
+	  nix_checkout="$$(realpath --relative-to="$(WORKSPACES)" "$(NIX_ALPINE_ROOT)")"; \
+	  COMPOSITION_AGNI_BRANCH="$(COREOS_PROFILE_BRANCH)" bash ./coreos-profile-qualify.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_PROFILE_CHECKOUT)" "$$agni_rev" "$$nix_checkout" "$$nix_rev" "$(COREOS_PROFILE)" "$(COREOS_PROFILE_OUTPUT)" "$(COREOS_PROFILE_STATE)" "$(COREOS_PROFILE_UNIT)" "$(COREOS_MAKE)" "$(COREOS_PROFILE_CONSOLE_LOGIN)"; \
+	fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 ensure-coreos-state-mount:
@@ -681,38 +714,4 @@ coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@rm -f "$(COREOS_STATE)/overlay.qcow2"
-
-# Astrochicken is a persistent systemd-user Nix-Alpine toolbox in CoreOS.
-# The Nix-Alpine Makefile owns its Butane inputs and guest qualification; Agni
-# supplies only the pinned CoreOS image and QEMU runner implementation.
-COREOS_ASTROCHICKEN_SOURCE_DIR ?= $(abspath ..)
-COREOS_ASTROCHICKEN_SOURCE_REV ?= $(shell git -C "$(COREOS_ASTROCHICKEN_SOURCE_DIR)" rev-parse HEAD 2>/dev/null)
-COREOS_ASTROCHICKEN_RESOURCES ?= $(WORKSPACES)/.nix-alpine-astrochicken-resources/$(SCOPE)
-COREOS_ASTROCHICKEN_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/astrochicken/$(SCOPE)
-COREOS_ASTROCHICKEN_UNIT ?= astrochicken-coreos-qemu-$(SCOPE)
-COREOS_ASTROCHICKEN_EXPECT_MARKER = COREOS_QEMU_STATUS=PASS profile=astrochicken
-COREOS_ASTROCHICKEN_WORKSPACE_FILES ?=
-export COREOS_ASTROCHICKEN_SOURCE_DIR COREOS_ASTROCHICKEN_SOURCE_REV COREOS_ASTROCHICKEN_RESOURCES COREOS_ASTROCHICKEN_STATE COREOS_ASTROCHICKEN_UNIT COREOS_ASTROCHICKEN_WORKSPACE_FILES COREOS_QEMU_CONSOLE_LOGIN
-
-qualify-coreos-astrochicken:
-	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
-	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-astrochicken" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-astrochicken LOG=0; \
-	else \
-	  set -Eeuo pipefail; \
-	  $(COREOS_MAKE) ensure-coreos-state-mount; \
-	  bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"; \
-	  podman exec "$(CONTAINER)" nix run --no-write-lock-file "$(NIX_ALPINE_TOOLBOX_FLAKE)#astrochicken-inputs" -- \
-	    /workspaces "/workspaces/$(patsubst $(WORKSPACES)/%,%,$(COREOS_ASTROCHICKEN_SOURCE_DIR))" "$(COREOS_ASTROCHICKEN_SOURCE_REV)" \
-	    "/workspaces/$(patsubst $(WORKSPACES)/%,%,$(COREOS_ASTROCHICKEN_RESOURCES))" "$(COREOS_ASTROCHICKEN_WORKSPACE_FILES)" "$(COREOS_QEMU_CONSOLE_LOGIN)"; \
-	  $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu \
-	    COREOS_CONFIG_DIR="$(COREOS_ASTROCHICKEN_RESOURCES)" \
-	    COREOS_RESOURCES="$(COREOS_ASTROCHICKEN_RESOURCES)" \
-	    COREOS_CONFIG_NAME=astrochicken-generated.bu \
-	    COREOS_STATE="$(COREOS_ASTROCHICKEN_STATE)" \
-	    COREOS_UNIT="$(COREOS_ASTROCHICKEN_UNIT)" \
-	    COREOS_COMPOSITION_NAME=astrochicken \
-	    COREOS_QEMU_CONSOLE_LOGIN="$(COREOS_QEMU_CONSOLE_LOGIN)" COREOS_QEMU_TRANSIENT_TESTER=0 COREOS_QEMU_HOLD="$(COREOS_QEMU_HOLD)" \
-	    COREOS_QEMU_EXPECT_MARKER="$(COREOS_ASTROCHICKEN_EXPECT_MARKER)" LOG=0; \
-	fi
 

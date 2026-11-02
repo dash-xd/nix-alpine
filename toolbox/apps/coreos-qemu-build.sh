@@ -9,8 +9,8 @@ config_dir="$(realpath "${4:?Butane config directory required}")"
 resources_dir="$(realpath "${5:?Butane resources directory required}")"
 state="$(realpath -m "${6:?CoreOS state directory required}")"
 reuse="${7:-1}"
-config_name="${8:-fatline-bootstrap.bu}"
-composition_name="${9:-fatline}"
+config_name="${8:-profile.bu}"
+composition_name="${9:-guest}"
 agni_dir="$(realpath "$workspace_root/$agni_checkout")"
 builder_id="$(realpath "$0")"
 
@@ -58,7 +58,7 @@ if ! output="$("${build_env[@]}" nix build -L --impure --no-write-lock-file --no
   exit 1
 fi
 cat "$build_log"
-[[ "$output" =~ ^/nix/store/[a-z0-9]{32}-fatline-coreos-qemu-bootstrap-[^[:space:]]+$ ]] || {
+[[ "$output" =~ ^/nix/store/[a-z0-9]{32}-agni-coreos-qemu-bootstrap-[^[:space:]]+$ ]] || {
   echo "Unexpected Nix artifact path output: $output" >&2
   exit 1
 }

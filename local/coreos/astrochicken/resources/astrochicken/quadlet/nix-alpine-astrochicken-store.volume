@@ -1,8 +1,0 @@
-[Unit]
-Description=Persistent rootless Nix store for Astrochicken
-
-[Volume]
-VolumeName=nix-alpine-astrochicken-store
-
-[Install]
-WantedBy=default.target

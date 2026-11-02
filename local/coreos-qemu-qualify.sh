@@ -13,7 +13,7 @@ web_port="${9:-8006}"
 hold="${10:-0}"
 ssh_port="${11:-2222}"
 ssh_key="${12:-}"
-composition="${13:-fatline}"
+composition="${13:-guest}"
 transient_test="${14:-0}"
 expected_marker="${15:-}"
 state="$(realpath -m "$state")"
@@ -99,7 +99,7 @@ if [[ "$accel" == kvm ]]; then
 fi
 
 systemd-run --user --quiet --unit="$unit" --collect \
-  --property="Description=Fatline CoreOS QEMU Podman bootstrap qualification" \
+  --property="Description=CoreOS QEMU Podman profile qualification" \
   --property=Restart=no \
   --property=KillMode=mixed \
   --property="RuntimeMaxSec=$((timeout_seconds + 60))s" \

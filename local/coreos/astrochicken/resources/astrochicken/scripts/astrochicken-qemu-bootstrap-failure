@@ -1,9 +1,0 @@
-#!/usr/bin/bash
-set -u
-
-{
-  echo "DIAGNOSTIC: Astrochicken CoreOS bootstrap failure"
-  /usr/bin/systemctl --no-pager --full status astrochicken-bootstrap.service astrochicken-identities.service || true
-  /usr/bin/journalctl -b --no-pager -n 200 -u astrochicken-bootstrap.service -u astrochicken-identities.service || true
-  echo "COREOS_QEMU_STATUS=FAIL profile=astrochicken"
-} >/dev/ttyS0 2>&1

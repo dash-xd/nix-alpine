@@ -1,9 +1,0 @@
-[Unit]
-Description=Astrochicken rootless Nix-Alpine service qualification
-Requires=nix-alpine-astrochicken.service
-After=nix-alpine-astrochicken.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/libexec/astrochicken-smoke
-TimeoutStartSec=5min

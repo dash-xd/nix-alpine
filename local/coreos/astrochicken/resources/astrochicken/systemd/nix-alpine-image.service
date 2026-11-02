@@ -1,9 +1,0 @@
-[Unit]
-Description=Build the pinned Nix-Alpine toolbox image for Astrochicken
-RequiresMountsFor=%h/workspaces/nix-alpine
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/podman build --tag localhost/nix-alpine-astrochicken:workspace %h/workspaces/nix-alpine
-RemainAfterExit=yes
-TimeoutStartSec=30min

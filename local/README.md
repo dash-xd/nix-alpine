@@ -37,13 +37,30 @@ Logma, Redis, and Nginx started as systemd-user Quadlets.
 
 ## CoreOS transient guest tester
 
-`make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=1` creates a throwaway
-SSH key, injects only its public half into a qualification-only Ignition
-profile, and forwards SSH on loopback. It copies the small tester into FCOS
-with SCP, then runs it as the generated composition user using a transient
-`systemd --user` unit. The private key and remote staging files are removed
-when the gate exits. This is an optional qualification path and is not part of
-production boot or recovery.
+CoreOS profile logic is owned by the selected infrastructure checkout. The
+Nix-Alpine Makefile provides the host QEMU/systemd adapter and invokes the
+profile's pinned preparation app inside the toolbox. For example, the Agni
+Astrochicken profile is selected by name:
+
+```bash
+make qualify-coreos-profile \
+  COREOS_PROFILE=astrochicken \
+  COREOS_PROFILE_BRANCH=agni-profile-branch \
+  COREOS_PROFILE_REV=<full-agni-commit-sha> \
+  LOG=1
+```
+
+The profile's Butane, guest units, inputs, expected marker, and preparation
+logic live in Agni under `qemu/coreos-live/profiles/astrochicken`. Nix-Alpine
+owns generic host resource setup, Nix build execution, rootless Podman, and
+transient systemd-user QEMU lifecycle. It does not own the Astrochicken
+qualification behavior.
+
+The selected profile owns whether a transient SSH tester is enabled and which
+guest identity it uses. The Astrochicken profile currently qualifies its
+systemd/Podman/Nix service without SSH; the production boot path has no SSH
+dependency. Use `qualify-coreos-guest-transient` only against an already
+provisioned guest that supports the generated application account.
 
 The same guest runner can target a GCP CoreOS guest through an already-open
 IAP tunnel. After starting the tunnel on a local port, run:
