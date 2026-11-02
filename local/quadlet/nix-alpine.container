@@ -1,11 +1,15 @@
 [Unit]
-Description=Nix-Alpine build workspace (@SCOPE@)
+Description=Nix-Alpine toolbox @VERSION@ (@WORKSPACE_KEY@/@SCOPE@)
 RequiresMountsFor=@WORKSPACES@ @STATE_ROOT@
 
 [Container]
 ContainerName=@CONTAINER@
 Image=@IMAGE@
 Pull=never
+Label=org.opencontainers.image.version=@VERSION@
+Label=org.opencontainers.image.revision=@SOURCE_REV@
+Label=io.nix-alpine.workspace=@WORKSPACE_KEY@
+Label=io.nix-alpine.scope=@SCOPE@
 Volume=@VOLUME@:/nix
 Volume=@WORKSPACES@:/workspaces:rw
 Volume=@STATE_ROOT@:/run/nix-alpine/coreos-qemu:rw
