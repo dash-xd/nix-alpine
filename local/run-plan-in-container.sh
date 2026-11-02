@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+[[ $# == 9 ]] || {
+  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE" >&2
+  exit 2
+}
+image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 runner=$7 gate=$8 scope=$9
+umask 077
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+for cmd in podman systemctl realpath; do command -v "$cmd" >/dev/null || die "Missing host command: $cmd"; done
+[[ "$scope" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "Invalid runtime scope"
+[[ "$checkout" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "PLAN_CHECKOUT must be a simple workspace directory name"
+[[ "$plan_file" != /* && "$plan_file" != *..* ]] || die "PLAN_FILE must be relative without traversal"
+[[ "$runner" != /* && "$runner" != *..* ]] || die "PLAN_RUNNER must be relative without traversal"
+
+workspaces=$(realpath "$workspaces")
+nix_alpine_root=$(realpath "$nix_alpine_root")
+nix_alpine_rel=$(realpath --relative-to="$workspaces" "$nix_alpine_root")
+[[ "$nix_alpine_rel" != .. && "$nix_alpine_rel" != ../* ]] || die "Nix-Alpine must be inside WORKSPACES"
+[[ -f "$workspaces/$checkout/$plan_file" ]] || die "Missing plan: $workspaces/$checkout/$plan_file"
+[[ -f "$workspaces/$checkout/$runner" ]] || die "Missing plan runner: $workspaces/$checkout/$runner"
+
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+podman_socket="$runtime_dir/podman/podman.sock"
+user_bus="$runtime_dir/bus"
+systemd_user_dir="$config_home/systemd/user"
+quadlet_dir="$config_home/containers/systemd"
+mkdir -p "$systemd_user_dir" "$quadlet_dir"
+systemctl --user start podman.socket
+[[ -S "$podman_socket" ]] || die "Rootless Podman socket is unavailable: $podman_socket"
+[[ -S "$user_bus" ]] || die "User systemd bus is unavailable: $user_bus"
+
+task="nix-alpine-plan-$scope-$$"
+run_tmp="$workspaces/.nix-alpine-runtime/$task"
+mkdir -p "$run_tmp"
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  if podman container exists "$task"; then
+    podman kill --signal KILL "$task" >/dev/null 2>&1 || true
+    podman rm -f "$task" >/dev/null 2>&1 || true
+  fi
+  rmdir "$run_tmp" 2>/dev/null || true
+  return "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+echo "Nix-Alpine runtime: $task"
+echo "Plan: $workspaces/$checkout/$plan_file (gate: $gate)"
+# The host-identical alias lets Podman resolve bind sources created by the plan.
+podman run --rm --name "$task" \
+  --userns=keep-id:uid=1000,gid=1000 --network host --cap-drop ALL --security-opt no-new-privileges \
+  --volume "$volume:/nix" \
+  --volume "$workspaces:/workspaces:rw" \
+  --volume "$workspaces:$workspaces:rw" \
+  --volume "$podman_socket:/run/host-user/podman/podman.sock:rw" \
+  --volume "$user_bus:/run/host-user/bus:rw" \
+  --volume "$systemd_user_dir:/home/nixuser/.config/systemd/user:rw" \
+  --volume "$quadlet_dir:/home/nixuser/.config/containers/systemd:rw" \
+  --env XDG_RUNTIME_DIR=/run/host-user \
+  --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
+  --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
+  --env TMPDIR="$run_tmp" \
+  --workdir "/workspaces/$checkout" \
+  "$image" nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
+  --command bash "/workspaces/$checkout/$runner" \
+  --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
+  --workspaces /workspaces --toolbox "$task" \
+  --nix-alpine-local "/workspaces/$nix_alpine_rel/local" \
+  --scope "$scope" --agni-checkout "$checkout"

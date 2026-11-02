@@ -27,11 +27,18 @@
           pkgs = import nixpkgs { inherit system; };
           base = with pkgs; [ git cacert ];
           goTools = with pkgs; [ go_1_26 ];
+          qualificationTools = with pkgs; [
+            bash coreutils curl findutils gawk gnugrep gnused gnumake git
+            podman python3 systemd
+          ];
         in {
           default = pkgs.mkShell { packages = base; };
           go = pkgs.mkShell { packages = base ++ goTools; };
           integration = pkgs.mkShell {
             packages = base ++ goTools ++ (with pkgs; [ redis ]);
+          };
+          qualification = pkgs.mkShell {
+            packages = base ++ qualificationTools;
           };
         });
     };

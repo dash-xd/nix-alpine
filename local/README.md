@@ -17,7 +17,11 @@ The toolbox image tag is derived from the Nix-Alpine source commit date and shor
 
 Default scope: `dev`. Other scopes: `make bootstrap SCOPE=other` and `make uninstall SCOPE=other`.
 
-No Smoke, Go daemon, host systemd bus mount, KVM passthrough or host deployment activation is implemented. `make qualify-toolbox LOG=1` is a focused rootless smoke check: it verifies the systemd service and versioned image, evaluates `QUALIFY_FLAKE` inside the toolbox (default: the reusable toolbox toolchain flake), creates a small Nix store output, then confirms a second rootless Podman container can read that output through the same named `/nix` volume. It does not require Nix on the host and does not inspect the host's Podman volume storage path.
+`make qualify-toolbox LOG=1` is a focused rootless smoke check: it verifies the systemd service and versioned image, evaluates `QUALIFY_FLAKE` inside the toolbox (default: the reusable toolbox toolchain flake), creates a small Nix store output, then confirms a second rootless Podman container can read that output through the same named `/nix` volume. It does not require Nix on the host and does not inspect the host's Podman volume storage path.
+
+`make qualify-plan` keeps the host as a small control surface: Make syncs the selected plan, ensures the versioned toolbox image and Nix volume exist, and starts a disposable Nix-Alpine runtime container. The selected plan and its assertions run inside that container using the pinned `toolbox#qualification` shell. The runtime container shares the workspace and `/nix` volume and receives only the host user's rootless Podman socket, user-systemd bus, and the two user unit directories needed by Quadlet. It mounts the workspace at `/workspaces` for flakes and at its host path for bind sources created by the plan. It uses host networking so tests can reach services deliberately published on `127.0.0.1`. It runs as the calling user through `keep-id`; it has no system-level/root Podman or systemd access. While a plan is running, it has the same authority as that user's rootless Podman client and can write that user's systemd/Quadlet definitions. The persistent toolbox does not receive those host-control mounts.
+
+This keeps application-specific plans and gates in Agni while Nix-Alpine supplies the reproducible runtime and generic host adapter. It remains a host Podman/systemd qualification, not a CoreOS boot or a minimal-distro qualification.
 
 ## Qualification logs
 
