@@ -64,6 +64,8 @@ render "$SCRIPT_DIR/quadlet/nix-alpine-store.volume" "$QUADLET_DIR/$VOLUME.volum
 render "$SCRIPT_DIR/quadlet/nix-alpine.container" "$QUADLET_DIR/$CONTAINER.container"
 systemctl --user daemon-reload
 systemctl --user restart "$SERVICE"
+log "Trusting mounted workspace Git checkouts inside the toolbox"
+podman exec "$CONTAINER" git config --global --add safe.directory '/workspaces/*'
 log "Verifying Nix"
 podman exec "$CONTAINER" nix --version
 cat <<EOF
