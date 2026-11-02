@@ -1,11 +1,16 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 SCOPE ?= dev
-CONTAINER ?= nix-alpine-$(SCOPE)
-SERVICE := $(CONTAINER).service
-VOLUME := $(CONTAINER)-store
-IMAGE ?= localhost/nix.xd:latest
 WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
+NIX_ALPINE_ROOT := $(abspath ..)
+NIX_ALPINE_SOURCE_REV ?= $(shell git -C "$(NIX_ALPINE_ROOT)" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr -d '-')
+NIX_ALPINE_VERSION ?= $(if $(NIX_ALPINE_SOURCE_DATE),$(NIX_ALPINE_SOURCE_DATE),unversioned)-$(NIX_ALPINE_SOURCE_REV)
+WORKSPACE_KEY ?= $(shell basename "$(WORKSPACES)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
+CONTAINER ?= nix-alpine-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(SCOPE)
+SERVICE ?= $(CONTAINER).service
+VOLUME ?= $(CONTAINER)-store
+IMAGE ?= localhost/nix-alpine:$(NIX_ALPINE_VERSION)
 NIX_ALPINE_HOME ?= $(HOME)/workspace/nix
 NIX_ALPINE_STATE_ROOT ?= $(NIX_ALPINE_HOME)/.state/nix-alpine
 COMPOSITION_AGNI_SOURCE ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)
@@ -73,7 +78,7 @@ FORCE ?= 0
 # Composition gates dispatch through shell scripts that invoke nested make.
 # Export qualification inputs so every child make uses the caller's scope,
 # workspaces, source pins, and toolbox identity.
-export SCOPE CONTAINER SERVICE VOLUME WORKSPACES NIX_ALPINE_HOME NIX_ALPINE_STATE_ROOT
+export SCOPE CONTAINER SERVICE VOLUME WORKSPACES WORKSPACE_KEY NIX_ALPINE_ROOT NIX_ALPINE_SOURCE_REV NIX_ALPINE_SOURCE_DATE NIX_ALPINE_VERSION IMAGE NIX_ALPINE_HOME NIX_ALPINE_STATE_ROOT
 export COMPOSITION GATE LOG LOG_DIR LOG_NAME QUADLET
 export COMPOSITION_AGNI_BRANCH COMPOSITION_AGNI_REV COMPOSITION_AGNI_CHECKOUT COMPOSITION_AGNI_SOURCE
 export COMPOSITION_REDIS_IMAGE COMPOSITION_NGINX_IMAGE COMPOSITION_LOGMA_IMAGE
@@ -408,9 +413,9 @@ test-workspace-race:
 	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
 bootstrap:
-	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
+	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
 uninstall:
-	SCOPE="$(SCOPE)" bash ./uninstall.sh
+	SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" bash ./uninstall.sh
 start:
 	systemctl --user start "$(SERVICE)"
 stop:
