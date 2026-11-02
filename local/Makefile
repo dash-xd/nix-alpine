@@ -7,9 +7,9 @@ NIX_ALPINE_SOURCE_REV ?= $(shell git -C "$(NIX_ALPINE_ROOT)" rev-parse --short=1
 NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr -d '-')
 NIX_ALPINE_VERSION ?= $(if $(NIX_ALPINE_SOURCE_DATE),$(NIX_ALPINE_SOURCE_DATE),unversioned)-$(NIX_ALPINE_SOURCE_REV)
 WORKSPACE_KEY ?= $(shell basename "$(WORKSPACES)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
-CONTAINER ?= nix-alpine-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(SCOPE)
+CONTAINER ?= nix-alpine-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(NIX_ALPINE_CHECKOUT)-$(SCOPE)
 SERVICE ?= $(CONTAINER).service
-VOLUME ?= $(CONTAINER)-store
+VOLUME ?= nix-alpine-$(SCOPE)-store
 IMAGE ?= localhost/nix-alpine:$(NIX_ALPINE_VERSION)
 NIX_ALPINE_HOME ?= $(HOME)/workspace/nix
 NIX_ALPINE_STATE_ROOT ?= $(NIX_ALPINE_HOME)/.state/nix-alpine
@@ -42,6 +42,7 @@ TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
 TOOLCHAIN_SHELL ?= go
 NIX_ALPINE_CHECKOUT ?= $(notdir $(abspath ..))
 NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/toolbox
+TOOLBOX_SMOKE_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/release
 REPO ?=
 BRANCH ?= main
 # Shared component pins for local and Actions qualification.
@@ -88,7 +89,7 @@ export COMPOSITION_TIMER_STATE_MODE COMPOSITION_STRICT_READINESS_MODE COMPOSITIO
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
+.PHONY: qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
 	@echo "make qualify-coreos-astrochicken COREOS_QEMU_DISPLAY=headless|web LOG=1 (CoreOS systemd-user Nix-Alpine toolbox; no SSH transient runner)"
@@ -127,6 +128,7 @@ help:
 	@echo "make test-go FLAKE=logma-qualification CGO=1 PACKAGE=./... (Nix Go and GCC)"
 	@echo "make test-go-sync REPO=xd-dash/logma BRANCH=branch SYNC_NAME=logma-qualification PACKAGE=./..."
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
+	@echo "make qualify-toolbox LOG=1 (systemd, Nix flake, and shared rootless Nix store smoke)"
 	@echo "make self-update (fast-forward this checkout; no image rebuild)"
 	@echo "make test-workspace-race-latest REPO=... BRANCH=... (race detector via Nix)"
 	@echo "make REPO=xd-dash/skymill BRANCH=... (isolated Redis integration)"
@@ -150,7 +152,7 @@ test-workspace-latest:
 
 refresh update:
 	@bash ./refresh.sh "$(FORCE)"
-	$(MAKE) bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
+	@env -u CONTAINER -u SERVICE -u VOLUME -u IMAGE -u WORKSPACE_KEY -u NIX_ALPINE_ROOT -u NIX_ALPINE_SOURCE_REV -u NIX_ALPINE_SOURCE_DATE -u NIX_ALPINE_VERSION $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"
 show-images images:
 	@bash ./images.sh inspect "$(CONTAINER)" "$(IMAGE)"
 show-image-layers:
@@ -234,6 +236,14 @@ qualify-workspace:
 diagnose-toolbox:
 	@podman exec "$(CONTAINER)" nix --version
 	@podman exec "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c go version
+
+qualify-toolbox:
+	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(LOG)" == 1 ]]; then \\
+	  bash ./logged-run.sh "$(LOG_DIR)" "toolbox-smoke" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \\
+	else \\
+	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(TOOLBOX_SMOKE_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \\
+	fi
 
 # Explicit component gate entrypoints; reuse the existing Nix-Alpine runner.
 qualify-process:
@@ -413,7 +423,7 @@ test-workspace-race:
 	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
 bootstrap:
-	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
+	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_CHECKOUT="$(NIX_ALPINE_CHECKOUT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
 uninstall:
 	SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" bash ./uninstall.sh
 start:
