@@ -11,7 +11,7 @@ make status
 make uninstall
 ```
 
-The toolbox image tag is derived from the Nix-Alpine source commit date and short revision, for example `localhost/nix-alpine:20261101-<revision>`. This identifies the source used to build it; it does not claim that Nix-Alpine itself passed a qualification pipeline. The systemd unit and container name also include the workspace, checkout, and scope, so different dated workspaces or revisions can run side by side. The Nix store volume remains scope-named to preserve the existing store across source refreshes. Choose a distinct `SCOPE` when you need an isolated store.
+The toolbox image tag is derived from the Nix-Alpine source commit date and short revision, for example `localhost/nix-alpine:2026.11.01-<revision>`. This identifies the source used to build it; it does not claim that Nix-Alpine itself passed a qualification pipeline. The systemd unit and container name also include the workspace, checkout, and scope, so different dated workspaces or revisions can run side by side. The Nix store volume remains scope-named to preserve the existing store across source refreshes. Choose a distinct `SCOPE` when you need an isolated store.
 
 `make refresh` fast-forwards the current checkout, then rebuilds and starts the newly versioned instance. Older versioned units remain available for comparison or rollback. `make uninstall` removes only the selected versioned instance's rootless Podman container, Quadlet definitions, and its scope's Nix store volume; inspect other old resources before cleaning them up. It does **not** remove this checkout, `~/workspace/nix`, other flakes, or unrelated Podman resources.
 
