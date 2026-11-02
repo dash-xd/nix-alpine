@@ -273,14 +273,13 @@ qualify-plan:
 	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_GATE="$(PLAN_GATE)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
 	else \
 	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" WORKSPACES="$(WORKSPACES)"; \
-	  plan_root="$(WORKSPACES)/$(PLAN_CHECKOUT)"; \
-	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$$plan_root" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
+	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$(WORKSPACES)/$(PLAN_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
 	  [[ "$(PLAN_FILE)" != /* && "$(PLAN_FILE)" != *..* ]] || { echo "PLAN_FILE must be relative without traversal" >&2; exit 2; }; \
-	  plan_file="$$plan_root/$(PLAN_FILE)"; test -f "$$plan_file" || { echo "Plan file not found: $$plan_file" >&2; exit 2; }; \
+	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FILE)" || { echo "Plan file not found: $(PLAN_FILE)" >&2; exit 2; }; \
 	  [[ "$(PLAN_RUNNER)" != /* && "$(PLAN_RUNNER)" != *..* ]] || { echo "PLAN_RUNNER must be relative without traversal" >&2; exit 2; }; \
-	  runner="$$plan_root/$(PLAN_RUNNER)"; test -f "$$runner" || { echo "Plan entrypoint is missing: $$runner" >&2; exit 2; }; \
+	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_RUNNER)" || { echo "Plan entrypoint is missing: $(PLAN_RUNNER)" >&2; exit 2; }; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash "$runner" --plan "$plan_file" --gate "$(PLAN_GATE)" --workspaces "$(WORKSPACES)" --toolbox "$(CONTAINER)" --nix-alpine-local "$(NIX_ALPINE_ROOT)/local" --scope "$(SCOPE)" --agni-checkout "$(PLAN_CHECKOUT)"; \
+	  bash "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_RUNNER)" --plan "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FILE)" --gate "$(PLAN_GATE)" --workspaces "$(WORKSPACES)" --toolbox "$(CONTAINER)" --nix-alpine-local "$(NIX_ALPINE_ROOT)/local" --scope "$(SCOPE)" --agni-checkout "$(PLAN_CHECKOUT)"; \
 	fi
 
 
