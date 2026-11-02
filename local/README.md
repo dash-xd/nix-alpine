@@ -17,7 +17,7 @@ The toolbox image tag is derived from the Nix-Alpine source commit date and shor
 
 Default scope: `dev`. Other scopes: `make bootstrap SCOPE=other` and `make uninstall SCOPE=other`.
 
-No Smoke, Go daemon, host systemd bus mount, KVM passthrough or host deployment activation is implemented. `make qualify-toolbox LOG=1` is a focused rootless smoke check: it verifies the systemd service and versioned image, evaluates the checked-in release flake inside the toolbox, creates a small Nix store output, then confirms a second rootless Podman container can read that output through the same named `/nix` volume. It does not require Nix on the host and does not inspect the host's Podman volume storage path.
+No Smoke, Go daemon, host systemd bus mount, KVM passthrough or host deployment activation is implemented. `make qualify-toolbox LOG=1` is a focused rootless smoke check: it verifies the systemd service and versioned image, evaluates `QUALIFY_FLAKE` inside the toolbox (default: the reusable toolbox toolchain flake), creates a small Nix store output, then confirms a second rootless Podman container can read that output through the same named `/nix` volume. It does not require Nix on the host and does not inspect the host's Podman volume storage path.
 
 ## Qualification logs
 
