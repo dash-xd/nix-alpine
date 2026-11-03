@@ -50,7 +50,7 @@ store_path="$(podman exec "${nix_env[@]}" "$CONTAINER" nix eval --raw --impure -
 podman exec "$CONTAINER" test -e "$store_path" || fail "primary toolbox cannot see its Nix store output"
 
 probe="nix-store-peer-$RANDOM-$BASHPID"
-podman run --rm --name "$probe" --userns=keep-id --network=none \
+podman run --rm --name "$probe" --userns=keep-id:uid=1000,gid=1000 --network=none \
   --volume "$VOLUME:/nix" --env "EXPECTED_STORE_PATH=$store_path" "${nix_env[@]}" \
   --entrypoint /bin/bash "$IMAGE" -c \
   'test -e "$EXPECTED_STORE_PATH" && command -v nix >/dev/null && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
