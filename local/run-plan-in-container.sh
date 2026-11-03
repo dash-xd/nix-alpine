@@ -71,6 +71,7 @@ podman_args=(run --rm --name "$task" \
   --env XDG_RUNTIME_DIR="/tmp/nix-alpine-runtime-$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
+  --env WORKSPACES=/workspaces \
   --env TMPDIR=/tmp \
   --workdir "/workspaces/$checkout")
 if [[ -n "$manifest_in_container" ]]; then
