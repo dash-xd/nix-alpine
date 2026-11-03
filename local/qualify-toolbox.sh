@@ -52,7 +52,7 @@ podman exec "$CONTAINER" test -e "$store_path" || fail "primary toolbox cannot s
 probe="nix-store-peer-$RANDOM-$BASHPID"
 podman run --rm --name "$probe" --userns=keep-id --network=none \
   --volume "$VOLUME:/nix" --env "EXPECTED_STORE_PATH=$store_path" "${nix_env[@]}" \
-  --entrypoint /bin/bash "$IMAGE" -lc \
-  'test -e "$EXPECTED_STORE_PATH" && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
+  --entrypoint /bin/bash "$IMAGE" -c \
+  'test -e "$EXPECTED_STORE_PATH" && command -v nix >/dev/null && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
 printf 'PASS: a second rootless Podman container used the same Nix store volume (%s)\n' "$VOLUME"
 printf 'PASS: toolbox qualification completed\n'
