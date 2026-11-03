@@ -43,11 +43,11 @@ PACKAGE ?= ./...
 CGO ?= 0
 TOOLCHAIN_FLAKE ?= $(NIX_ALPINE_CHECKOUT_PATH)/toolbox
 TOOLCHAIN_SHELL ?= go
-NIX_ALPINE_CHECKOUT_PATH ?= $(patsubst $(NIX_ALPINE_WORKSPACE_ROOT)/%,%,$(NIX_ALPINE_ROOT))
+NIX_ALPINE_CHECKOUT_PATH ?= $(patsubst $(NIX_XD_ROOT)/%,%,$(NIX_ALPINE_ROOT))
 ifeq ($(NIX_ALPINE_CHECKOUT_PATH),.)
 $(error Nix-Alpine checkout must be a named directory under $(NIX_ALPINE_WORKSPACE_ROOT))
 endif
-ifneq ($(abspath $(NIX_ALPINE_WORKSPACE_ROOT)/$(NIX_ALPINE_CHECKOUT_PATH)),$(abspath $(NIX_ALPINE_ROOT)))
+ifneq ($(abspath $(NIX_XD_ROOT)/$(NIX_ALPINE_CHECKOUT_PATH)),$(abspath $(NIX_ALPINE_ROOT)))
 $(error Nix-Alpine checkout must be inside $(NIX_ALPINE_WORKSPACE_ROOT))
 endif
 NIX_ALPINE_CHECKOUT ?= $(shell printf '%s' "$(NIX_ALPINE_CHECKOUT_PATH)" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')

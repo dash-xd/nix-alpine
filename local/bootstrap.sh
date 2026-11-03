@@ -11,7 +11,7 @@ NIX_ALPINE_HOME="${NIX_ALPINE_HOME:-$HOME}"
 NIX_ALPINE_STATE_ROOT="${NIX_ALPINE_STATE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/nix.xd}"
 WORKSPACES="${WORKSPACES:-$NIX_XD_ROOT}"
 SCOPE="${SCOPE:-dev}"
-NIX_ALPINE_CHECKOUT_PATH="${NIX_ALPINE_CHECKOUT_PATH:-$(realpath --relative-to="$NIX_ALPINE_WORKSPACE_ROOT" "$NIX_ALPINE_ROOT")}"
+NIX_ALPINE_CHECKOUT_PATH="${NIX_ALPINE_CHECKOUT_PATH:-$(realpath --relative-to="$NIX_XD_ROOT" "$NIX_ALPINE_ROOT")}"
 NIX_ALPINE_CHECKOUT="${NIX_ALPINE_CHECKOUT:-$(printf '%s' "$NIX_ALPINE_CHECKOUT_PATH" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')}"
 NIX_ALPINE_SOURCE_REV="${NIX_ALPINE_SOURCE_REV:-$(git -C "$NIX_ALPINE_ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
 NIX_ALPINE_SOURCE_DATE="${NIX_ALPINE_SOURCE_DATE:-$(git -C "$NIX_ALPINE_ROOT" log -1 --format=%cs 2>/dev/null | tr '-' '.')}"
@@ -33,6 +33,7 @@ NIX_ALPINE_ROOT=$(realpath "$NIX_ALPINE_ROOT")
 WORKSPACES=$(realpath -m "$WORKSPACES")
 NIX_ALPINE_WORKSPACE_ROOT=$(realpath -m "$NIX_ALPINE_WORKSPACE_ROOT")
 [[ "$NIX_ALPINE_ROOT" == "$NIX_ALPINE_WORKSPACE_ROOT/"* ]] || die "Nix-Alpine checkout must be under $NIX_ALPINE_WORKSPACE_ROOT"
+[[ "$(realpath -m "$NIX_XD_ROOT/$NIX_ALPINE_CHECKOUT_PATH")" == "$NIX_ALPINE_ROOT" ]] || die "Nix-Alpine checkout path must be relative to the common nix.xd root"
 [[ "$NIX_ALPINE_CHECKOUT_PATH" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ && "$NIX_ALPINE_CHECKOUT_PATH" != *//* ]] || die "Invalid Nix-Alpine checkout path"
 IFS=/ read -r -a checkout_parts <<< "$NIX_ALPINE_CHECKOUT_PATH"
 for checkout_part in "${checkout_parts[@]}"; do
