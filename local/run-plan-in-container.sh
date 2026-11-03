@@ -80,7 +80,7 @@ podman_args=(run --rm --name "$task" \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
   --volume "$workspaces:$workspaces:rw" \
-  --tmpfs /run/host-user:rw,size=1m,mode=0700,uid=1000,gid=1000 \
+  --tmpfs /run/host-user:rw,size=1m,mode=0700,U \
   --volume "$systemd_user_runtime:/run/host-user/systemd:rw" \
   --volume "$podman_socket:/run/host-user/podman/podman.sock:rw" \
   --volume "$user_bus:/run/host-user/bus:rw" \
