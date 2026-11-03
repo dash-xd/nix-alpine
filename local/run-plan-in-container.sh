@@ -42,7 +42,8 @@ systemctl --user start podman.socket
 [[ -S "$podman_socket" ]] || die "Rootless Podman socket is unavailable: $podman_socket"
 [[ -S "$user_bus" ]] || die "User systemd bus is unavailable: $user_bus"
 
-task="nix-alpine-plan-$scope-$$"
+task="nix-alpine-plan-$scope-$"
+plan_tmp="$workspaces/.state/nix-alpine/plan-tmp/$task"
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
@@ -50,17 +51,30 @@ cleanup() {
     podman kill --signal KILL "$task" >/dev/null 2>&1 || true
     podman rm -f "$task" >/dev/null 2>&1 || true
   fi
+  if [[ -d "$plan_tmp" ]]; then
+    if ! find "$plan_tmp" -mindepth 1 -print -quit | grep -q .; then
+      rmdir "$plan_tmp" 2>/dev/null || true
+    elif (( status == 0 )); then
+      rm -rf -- "$plan_tmp"
+    else
+      echo "Preserving failed plan scratch at $plan_tmp" >&2
+    fi
+  fi
   return "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+mkdir -p "$(dirname "$plan_tmp")"
+mkdir "$plan_tmp"
+chmod 700 "$plan_tmp"
 
 echo "Nix-Alpine runtime: $task"
+echo "Host-visible plan scratch: $plan_tmp"
 echo "Plan: $workspaces/$checkout/$plan_file (gate: $gate)"
 # The host-identical alias lets Podman resolve bind sources created by the plan.
 podman_args=(run --rm --name "$task" \
-  --userns=keep-id --network host --cap-drop ALL --security-opt no-new-privileges \
+  --userns=keep-id:uid=1000,gid=1000 --network host --cap-drop ALL --security-opt no-new-privileges \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
   --volume "$workspaces:$workspaces:rw" \
@@ -72,13 +86,13 @@ podman_args=(run --rm --name "$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env WORKSPACES=/workspaces \
-  --env TMPDIR=/tmp \
+  --env TMPDIR="$plan_tmp" \
   --workdir "/workspaces/$checkout")
 if [[ -n "$manifest_in_container" ]]; then
   podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
 fi
 if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
-podman_args+=("$image" bash -euc 'mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
+podman_args+=("$image" bash -euc 'mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; chmod 700 "$TMPDIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
   nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
   --command bash "/workspaces/$checkout/$runner" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
