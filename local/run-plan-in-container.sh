@@ -43,8 +43,6 @@ systemctl --user start podman.socket
 [[ -S "$user_bus" ]] || die "User systemd bus is unavailable: $user_bus"
 
 task="nix-alpine-plan-$scope-$$"
-run_tmp="$workspaces/.nix-alpine-runtime/$task"
-mkdir -p "$run_tmp"
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
@@ -52,7 +50,6 @@ cleanup() {
     podman kill --signal KILL "$task" >/dev/null 2>&1 || true
     podman rm -f "$task" >/dev/null 2>&1 || true
   fi
-  rmdir "$run_tmp" 2>/dev/null || true
   return "$status"
 }
 trap cleanup EXIT
@@ -74,7 +71,7 @@ podman_args=(run --rm --name "$task" \
   --env XDG_RUNTIME_DIR=/run/host-user \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
-  --env TMPDIR="$run_tmp" \
+  --env TMPDIR=/tmp \
   --workdir "/workspaces/$checkout")
 if [[ -n "$manifest_in_container" ]]; then
   podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
