@@ -35,14 +35,12 @@ runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 podman_socket="$runtime_dir/podman/podman.sock"
 user_bus="$runtime_dir/bus"
-systemd_user_runtime="$runtime_dir/systemd"
 systemd_user_dir="$config_home/systemd/user"
 quadlet_dir="$config_home/containers/systemd"
 mkdir -p "$systemd_user_dir" "$quadlet_dir"
 systemctl --user start podman.socket
 [[ -S "$podman_socket" ]] || die "Rootless Podman socket is unavailable: $podman_socket"
 [[ -S "$user_bus" ]] || die "User D-Bus socket is unavailable: $user_bus"
-[[ -d "$systemd_user_runtime" && -S "$systemd_user_runtime/private" ]] || die "User systemd control socket is unavailable: $systemd_user_runtime/private"
 
 task="nix-alpine-plan-${scope}-${BASHPID}"
 plan_tmp="$workspaces/.state/nix-alpine/plan-tmp/$task"
@@ -80,13 +78,10 @@ podman_args=(run --rm --name "$task" \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
   --volume "$workspaces:$workspaces:rw" \
-  --tmpfs /run/host-user:rw,size=1m,mode=0700,U \
-  --volume "$systemd_user_runtime:/run/host-user/systemd:rw" \
   --volume "$podman_socket:/run/host-user/podman/podman.sock:rw" \
   --volume "$user_bus:/run/host-user/bus:rw" \
   --volume "$systemd_user_dir:/home/nixuser/.config/systemd/user:rw" \
   --volume "$quadlet_dir:/home/nixuser/.config/containers/systemd:rw" \
-  --env XDG_RUNTIME_DIR=/run/host-user \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env WORKSPACES=/workspaces \
@@ -96,9 +91,9 @@ if [[ -n "$manifest_in_container" ]]; then
   podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
 fi
 if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
-podman_args+=("$image" bash -euc 'chmod 700 "$TMPDIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
+podman_args+=("$image" bash -euc 'unset XDG_RUNTIME_DIR; chmod 700 "$TMPDIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
   nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
-  --command bash "/workspaces/$checkout/$runner" \
+  --command bash -euc 'unset XDG_RUNTIME_DIR; systemctl --user show-environment >/dev/null || { echo "ERROR: host user systemd D-Bus is unavailable from Nix-Alpine runtime" >&2; exit 1; }; echo "PASS: host user systemd D-Bus reachable from Nix-Alpine runtime"; exec bash "$@"' -- "/workspaces/$checkout/$runner" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
   --workspaces /workspaces --toolbox "$task" \
   --nix-alpine-local "/workspaces/$nix_alpine_rel/local" \
