@@ -34,19 +34,24 @@ workspace_mount="$(podman inspect "$CONTAINER" --format '{{range .Mounts}}{{if e
 [[ "$(realpath "$workspace_mount")" == "$WORKSPACES" ]] || fail "workspace bind mount does not match $WORKSPACES"
 
 nix_version="$(podman exec "$CONTAINER" nix --version)"
+
+nix_env=()
+if [[ -n "${NIX_CONFIG:-}" ]]; then
+  nix_env+=(--env NIX_CONFIG)
+fi
 printf 'PASS: systemd toolbox active: %s\n' "$SERVICE"
 printf 'PASS: toolbox source %s (%s), image %s\n' "$VERSION" "$SOURCE_REV" "$image_id"
 printf 'PASS: Nix executable: %s\n' "$nix_version"
-podman exec "$CONTAINER" nix flake show --no-write-lock-file "$FLAKE" >/dev/null
+podman exec "${nix_env[@]}" "$CONTAINER" nix flake show --no-write-lock-file "$FLAKE" >/dev/null
 printf 'PASS: Nix flake evaluated: %s\n' "$FLAKE"
 
-store_path="$(podman exec "$CONTAINER" nix eval --raw --impure --expr 'builtins.toFile "nix-alpine-shared-store-smoke" "shared-store"')"
+store_path="$(podman exec "${nix_env[@]}" "$CONTAINER" nix eval --raw --impure --expr 'builtins.toFile "nix-alpine-shared-store-smoke" "shared-store"')"
 [[ "$store_path" == /nix/store/* ]] || fail "Nix returned an invalid shared-store path: $store_path"
 podman exec "$CONTAINER" test -e "$store_path" || fail "primary toolbox cannot see its Nix store output"
 
 probe="nix-store-peer-$RANDOM-$BASHPID"
 podman run --rm --name "$probe" --userns=keep-id --network=none \
-  --volume "$VOLUME:/nix" --env "EXPECTED_STORE_PATH=$store_path" \
+  --volume "$VOLUME:/nix" --env "EXPECTED_STORE_PATH=$store_path" "${nix_env[@]}" \
   --entrypoint /bin/bash "$IMAGE" -lc \
   'test -e "$EXPECTED_STORE_PATH" && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
 printf 'PASS: a second rootless Podman container used the same Nix store volume (%s)\n' "$VOLUME"
