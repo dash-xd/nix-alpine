@@ -98,6 +98,8 @@ help:
 	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=name PLAN_FILE=path PLAN_RUNNER=path GATE=all (generic plan dispatcher)"
 	@echo "make inventory RESOURCE=units|quadlets|containers|networks|images|volumes|paths PREFIX=... PATHS=... PATH_DEPTH=... (read-only)"
 	@echo "make cleanup RESOURCE=... PREFIX=... DRY_RUN=1|0 (literal prefix; dry-run by default)"
+	@echo "make cleanup-run RUN_PREFIX=... DRY_RUN=1|0 (remove one qualification run; shared stores/images are kept)"
+	@echo "make qualify-plan ... RETAIN=1 (retain the final selected gate for live inspection; default RETAIN=0)"
 
 	@echo "make qualify-composition COMPOSITION=fatline GATE=all|lifecycle-dispatch|timer-recovery|production-acl|strict-readiness LOG=1 (timestamped log + exit code)"
 	@echo "make qualify-composition-skymill-provider QUADLET=1 LOG=1 (Skymill against systemd Quadlets; timestamped log)"
@@ -265,12 +267,14 @@ PLAN_FILE ?=
 PLAN_RUNNER ?=
 PLAN_SOURCES ?=
 PLAN_ARTIFACT_MANIFEST ?=
+RETAIN ?= 0
 PLAN_GATE ?= $(GATE)
 qualify-plan:
 	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
+	elif [[ "$(RETAIN)" != 0 && "$(RETAIN)" != 1 ]]; then echo "RETAIN must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_SOURCES="$(PLAN_SOURCES)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" PLAN_GATE="$(PLAN_GATE)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_SOURCES="$(PLAN_SOURCES)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" PLAN_GATE="$(PLAN_GATE)" RETAIN="$(RETAIN)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
 	else \
 	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" WORKSPACES="$(WORKSPACES)"; \
 	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$(WORKSPACES)/$(PLAN_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
@@ -285,7 +289,7 @@ qualify-plan:
 	    bash ./sync-plan-sources.sh "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_SOURCES)" "$(WORKSPACES)"; \
 	  fi; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_RUNNER)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)"; \
+	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_RUNNER)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)" "$(RETAIN)"; \
 	fi
 
 # Composition registry dispatches Fatline runtime gates and component image workflows.\n# Component image preparation does not imply release qualification.
@@ -584,17 +588,23 @@ qualify-deployment-socket:
 	@bash ./qualify-deployment-socket.sh "$(CONTAINER)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_REDIS_IMAGE)"
 
 # Generic host resource inspection and scoped cleanup. Prefix matching is literal;
-# cleanup requires a prefix and defaults to a dry run.
+# both cleanup interfaces default to a dry run.
 RESOURCE ?= containers
 PREFIX ?=
+RUN_PREFIX ?=
+RUN_WORKSPACES ?= $(WORKSPACES)
+STOP_TIMEOUT ?= 10
 PATHS ?=
 PATH_DEPTH ?= 2
 DRY_RUN ?= 1
-.PHONY: inventory cleanup
+.PHONY: inventory cleanup cleanup-run
 inventory:
 	@bash ./resource-lifecycle.sh inspect "$(RESOURCE)" "$(PREFIX)" 1 "$(PATHS)" "$(PATH_DEPTH)"
 cleanup:
 	@bash ./resource-lifecycle.sh cleanup "$(RESOURCE)" "$(PREFIX)" "$(DRY_RUN)"
+cleanup-run:
+	@test -n "$(RUN_PREFIX)" || { echo "RUN_PREFIX must be the exact run prefix printed by the qualification" >&2; exit 2; }
+	@bash ./cleanup-run.sh "$(RUN_PREFIX)" "$(DRY_RUN)" "$(RUN_WORKSPACES)" "$(STOP_TIMEOUT)"
 
 # Archive parity between local qualification and disposable CI runners.
 # Archive paths contain only compressed image transports and a verified manifest.

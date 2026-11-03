@@ -109,3 +109,8 @@ A real integration release uses `make release-candidate` and
 `$NIX_ALPINE_HOME/.state/nix-alpine/releases` (default `$HOME/workspace/nix/.state/nix-alpine/releases`). A candidate or qualified version is
 never overwritten by this command. The integration target is not yet
 qualified on the local host; do not use it for production activation.
+
+
+## Ephemeral and retained plan runs
+
+Plan runs are ephemeral by default: the Agni runner removes the run's user units, Quadlet definitions, containers, network, and scratch directory on normal completion. Set `RETAIN=1` on `make qualify-plan` to keep the final selected gate's runtime active for live inspection. The runner prints its literal run prefix. To remove a retained run or recover resources left by a killed run, first inspect with `make cleanup-run RUN_PREFIX=<printed-prefix> DRY_RUN=1`, then repeat with `DRY_RUN=0` after reviewing the exact matches. This scoped operation preserves toolbox containers, Nix store volumes, reusable images, logs, source checkouts, and unrelated workspace files. Persistent toolbox instances are managed separately with the selected instance's `make uninstall`.
