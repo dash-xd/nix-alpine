@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-[[ $# == 9 || $# == 10 ]] || {
-  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE [ARTIFACT_MANIFEST]" >&2
+[[ $# == 11 ]] || {
+  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE ARTIFACT_MANIFEST RETAIN" >&2
   exit 2
 }
 image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 runner=$7 gate=$8 scope=$9
 artifact_manifest=${10:-}
+retain=${11:-0}
+[[ "$retain" == 0 || "$retain" == 1 ]] || { echo "RETAIN must be 0 or 1" >&2; exit 2; }
 umask 077
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -85,6 +87,7 @@ podman_args=(run --rm --name "$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env WORKSPACES=/workspaces \
+  --env NIX_ALPINE_RETAIN="$retain" \
   --env TMPDIR="$plan_tmp" \
   --workdir "/workspaces/$checkout")
 if [[ -n "$manifest_in_container" ]]; then
