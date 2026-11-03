@@ -87,6 +87,7 @@ podman_args=(run --rm --name "$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env WORKSPACES=/workspaces \
+  --env NIX_ALPINE_HOST_WORKSPACES="$workspaces" \
   --env NIX_ALPINE_RETAIN="$retain" \
   --env TMPDIR="$plan_tmp" \
   --workdir "/workspaces/$checkout")
