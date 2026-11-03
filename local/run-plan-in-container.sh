@@ -42,7 +42,7 @@ systemctl --user start podman.socket
 [[ -S "$podman_socket" ]] || die "Rootless Podman socket is unavailable: $podman_socket"
 [[ -S "$user_bus" ]] || die "User systemd bus is unavailable: $user_bus"
 
-task="nix-alpine-plan-$scope-$"
+task="nix-alpine-plan-${scope}-${BASHPID}"
 plan_tmp="$workspaces/.state/nix-alpine/plan-tmp/$task"
 cleanup() {
   local status=$?
