@@ -17,7 +17,7 @@ Volume=@RELEASE_STATE@:/run/nix-alpine/releases:ro
 WorkingDir=/workspaces
 Environment=HOME=/home/nixuser
 Exec=sleep infinity
-UserNS=keep-id
+UserNS=keep-id:uid=1000,gid=1000
 NoNewPrivileges=true
 
 [Service]
