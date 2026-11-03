@@ -68,7 +68,7 @@ podman_args=(run --rm --name "$task" \
   --volume "$user_bus:/run/host-user/bus:rw" \
   --volume "$systemd_user_dir:/home/nixuser/.config/systemd/user:rw" \
   --volume "$quadlet_dir:/home/nixuser/.config/containers/systemd:rw" \
-  --env XDG_RUNTIME_DIR=/run/host-user \
+  --env XDG_RUNTIME_DIR="/tmp/nix-alpine-runtime-$task" \
   --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/host-user/bus \
   --env CONTAINER_HOST=unix:///run/host-user/podman/podman.sock \
   --env TMPDIR=/tmp \
@@ -77,7 +77,7 @@ if [[ -n "$manifest_in_container" ]]; then
   podman_args+=(--volume "$artifact_manifest:$manifest_in_container:ro")
 fi
 if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
-podman_args+=("$image" bash -euc 'bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
+podman_args+=("$image" bash -euc 'mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
   nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
   --command bash "/workspaces/$checkout/$runner" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
