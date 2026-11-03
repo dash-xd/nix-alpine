@@ -14,16 +14,27 @@ umask 077
 die() { echo "ERROR: $*" >&2; exit 1; }
 for cmd in podman systemctl realpath; do command -v "$cmd" >/dev/null || die "Missing host command: $cmd"; done
 [[ "$scope" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "Invalid runtime scope"
-[[ "$checkout" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "PLAN_CHECKOUT must be a simple workspace directory name"
-[[ "$plan_file" != /* && "$plan_file" != *..* ]] || die "PLAN_FILE must be relative without traversal"
-[[ "$runner" != /* && "$runner" != *..* ]] || die "PLAN_RUNNER must be relative without traversal"
+validate_relative_path() {
+  local value=$1 part
+  [[ -n "$value" && "$value" != /* && "$value" != *//* ]] || return 1
+  IFS=/ read -r -a parts <<< "$value"
+  for part in "${parts[@]}"; do
+    [[ "$part" =~ ^[A-Za-z0-9_.-]+$ && "$part" != "." && "$part" != ".." && "$part" != ".git" ]] || return 1
+  done
+}
+validate_relative_path "$checkout" || die "PLAN_CHECKOUT must be a safe workspace-relative path"
+validate_relative_path "$plan_file" || die "PLAN_FILE must be a safe workspace-relative path"
+validate_relative_path "$runner" || die "PLAN_RUNNER must be a safe workspace-relative path"
 
 workspaces=$(realpath "$workspaces")
 nix_alpine_root=$(realpath "$nix_alpine_root")
 nix_alpine_rel=$(realpath --relative-to="$workspaces" "$nix_alpine_root")
 [[ "$nix_alpine_rel" != .. && "$nix_alpine_rel" != ../* ]] || die "Nix-Alpine must be inside WORKSPACES"
-[[ -f "$workspaces/$checkout/$plan_file" ]] || die "Missing plan: $workspaces/$checkout/$plan_file"
-[[ -f "$workspaces/$checkout/$runner" ]] || die "Missing plan runner: $workspaces/$checkout/$runner"
+checkout_root=$(realpath "$workspaces/$checkout")
+checkout_rel=$(realpath --relative-to="$workspaces" "$checkout_root")
+[[ "$checkout_rel" == "$checkout" ]] || die "Plan checkout resolves outside its declared workspace path"
+[[ -f "$checkout_root/$plan_file" ]] || die "Missing plan: $checkout_root/$plan_file"
+[[ -f "$checkout_root/$runner" ]] || die "Missing plan runner: $checkout_root/$runner"
 manifest_in_container=
 if [[ -n "$artifact_manifest" ]]; then
   artifact_manifest=$(realpath "$artifact_manifest")
@@ -44,8 +55,8 @@ systemctl --user start podman.socket
 [[ -S "$podman_socket" ]] || die "Rootless Podman socket is unavailable: $podman_socket"
 [[ -S "$user_bus" ]] || die "User D-Bus socket is unavailable: $user_bus"
 
-task="nix-alpine-plan-${scope}-${BASHPID}"
-plan_tmp="$workspaces/.state/nix-alpine/plan-tmp/$task"
+task="nix.xd-plan-${scope}-${BASHPID}"
+plan_tmp="${XDG_STATE_HOME:-$HOME/.local/state}/nix.xd/plan-tmp/$task"
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
@@ -80,6 +91,7 @@ podman_args=(run --rm --name "$task" \
   --volume "$volume:/nix" \
   --volume "$workspaces:/workspaces:rw" \
   --volume "$workspaces:$workspaces:rw" \
+  --volume "$plan_tmp:$plan_tmp:rw" \
   --volume "$podman_socket:/run/host-user/podman/podman.sock:rw" \
   --volume "$user_bus:/run/host-user/bus:rw" \
   --volume "$systemd_user_dir:/home/nixuser/.config/systemd/user:rw" \

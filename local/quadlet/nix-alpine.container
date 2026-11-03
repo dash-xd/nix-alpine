@@ -1,5 +1,5 @@
 [Unit]
-Description=Nix-Alpine toolbox @VERSION@ (@WORKSPACE_KEY@/@SCOPE@)
+Description=nix.xd toolbox @VERSION@ (@WORKSPACE_KEY@/@SCOPE@)
 RequiresMountsFor=@WORKSPACES@ @STATE_ROOT@
 
 [Container]

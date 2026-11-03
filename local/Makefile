@@ -1,18 +1,21 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 SCOPE ?= dev
-WORKSPACES ?= $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/../..)
 NIX_ALPINE_ROOT := $(abspath $(dir $(realpath $(firstword $(MAKEFILE_LIST))))/..)
+NIX_XD_ROOT ?= $(abspath $(NIX_ALPINE_ROOT)/../..)
+NIX_ALPINE_WORKSPACE_ROOT ?= $(NIX_XD_ROOT)/nix-alpine
+COMPOSITIONS_ROOT ?= $(NIX_XD_ROOT)/compositions
+WORKSPACES ?= $(NIX_XD_ROOT)
 NIX_ALPINE_SOURCE_REV ?= $(shell git -C "$(NIX_ALPINE_ROOT)" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 NIX_ALPINE_SOURCE_DATE ?= $(shell git -C "$(NIX_ALPINE_ROOT)" log -1 --format=%cs 2>/dev/null | tr '-' '.')
 NIX_ALPINE_VERSION ?= $(if $(NIX_ALPINE_SOURCE_DATE),$(NIX_ALPINE_SOURCE_DATE),unversioned)-$(NIX_ALPINE_SOURCE_REV)
 WORKSPACE_KEY ?= $(shell basename "$(WORKSPACES)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
-CONTAINER ?= nix-alpine-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(NIX_ALPINE_CHECKOUT)-$(SCOPE)
+CONTAINER ?= nix.xd-$(NIX_ALPINE_VERSION)-$(WORKSPACE_KEY)-$(NIX_ALPINE_CHECKOUT)-$(SCOPE)
 SERVICE ?= $(CONTAINER).service
 VOLUME ?= nix-alpine-$(SCOPE)-store
-IMAGE ?= localhost/nix-alpine:$(NIX_ALPINE_VERSION)
-NIX_ALPINE_HOME ?= $(HOME)/workspace/nix
-NIX_ALPINE_STATE_ROOT ?= $(NIX_ALPINE_HOME)/.state/nix-alpine
+IMAGE ?= localhost/nix.xd:$(NIX_ALPINE_VERSION)
+NIX_ALPINE_HOME ?= $(HOME)
+NIX_ALPINE_STATE_ROOT ?= $(if $(XDG_STATE_HOME),$(XDG_STATE_HOME),$(HOME)/.local/state)/nix.xd
 COMPOSITION_AGNI_SOURCE ?= $(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)
 export COMPOSITION_AGNI_SOURCE
 FLAKE ?= .
@@ -28,57 +31,64 @@ COMPOSITIONS ?= $(WORKSPACES)/.compositions
 HASH := \#
 RELEASE_VERSION ?=
 RELEASE_IMAGE ?=
-RELEASE_SOURCE ?= $(WORKSPACES)/$(notdir $(REPO))
+RELEASE_SOURCE ?= $(COMPOSITIONS_ROOT)/$(notdir $(REPO))
 RELEASE_FLAKE ?= $(FLAKE_PATH)
 RELEASE_TARGET ?= $(HASH)provider-image
 # Release qualification selects its mandatory gate pair by COMPONENT in release-qualify.sh.
 RELEASE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/releases
-RELEASE_SOURCE_CONTAINER ?= /workspaces/$(notdir $(REPO))
-RELEASE_METADATA_FLAKE ?= /workspaces/nix-alpine/release
+RELEASE_SOURCE_CONTAINER ?= /workspaces/compositions/$(notdir $(REPO))
+RELEASE_METADATA_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/release
 RELEASE_IMPORT_RECORD ?= $(RELEASE_STATE)/$(COMPONENT)/$(RELEASE_VERSION).import.json
 PACKAGE ?= ./...
 CGO ?= 0
-TOOLCHAIN_FLAKE ?= nix-alpine/toolbox
+TOOLCHAIN_FLAKE ?= $(NIX_ALPINE_CHECKOUT_PATH)/toolbox
 TOOLCHAIN_SHELL ?= go
-NIX_ALPINE_CHECKOUT ?= $(shell basename "$(NIX_ALPINE_ROOT)" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
-NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT)/toolbox
+NIX_ALPINE_CHECKOUT_PATH ?= $(patsubst $(NIX_ALPINE_WORKSPACE_ROOT)/%,%,$(NIX_ALPINE_ROOT))
+ifeq ($(NIX_ALPINE_CHECKOUT_PATH),.)
+$(error Nix-Alpine checkout must be a named directory under $(NIX_ALPINE_WORKSPACE_ROOT))
+endif
+ifneq ($(abspath $(NIX_ALPINE_WORKSPACE_ROOT)/$(NIX_ALPINE_CHECKOUT_PATH)),$(abspath $(NIX_ALPINE_ROOT)))
+$(error Nix-Alpine checkout must be inside $(NIX_ALPINE_WORKSPACE_ROOT))
+endif
+NIX_ALPINE_CHECKOUT ?= $(shell printf '%s' "$(NIX_ALPINE_CHECKOUT_PATH)" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g')
+NIX_ALPINE_TOOLBOX_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/toolbox
 QUALIFY_FLAKE ?= $(NIX_ALPINE_TOOLBOX_FLAKE)
 REPO ?=
 BRANCH ?= main
 # Shared component pins for local and Actions qualification.
 include $(dir $(realpath $(lastword $(MAKEFILE_LIST))))fatline-qualification.sources
-COMPOSITION_AGNI_CHECKOUT ?= agni-qualification
-SYNC_NAME ?=
-FATLINE_AGNI ?= $(WORKSPACES)/agni
+COMPOSITION_AGNI_CHECKOUT ?= compositions/agni-qualification
+SYNC_NAME ?= compositions/$(notdir $(REPO))
+FATLINE_AGNI ?= $(COMPOSITIONS_ROOT)/agni
 QUALIFY_COMPONENT ?= $(COMPONENT)
 QUALIFY_IMAGE ?= $(if $(filter nginx,$(QUALIFY_COMPONENT)),localhost/fatline-nginx:candidate,localhost/fatline-redis:candidate)
-QUALIFY_SMOKE ?= $(WORKSPACES)/smoke
+QUALIFY_SMOKE ?= $(COMPOSITIONS_ROOT)/smoke
 COMPOSITION_REDIS_IMAGE ?= localhost/nix-alpine/redis:qualified-2026.10.23
 COMPOSITION_NGINX_IMAGE ?= localhost/nix-alpine/nginx:qualified-2026.10.23.1
 COMPOSITION_LOGMA_IMAGE ?= localhost/logma-provider:candidate
 COMPOSITION_SKYMILL_IMAGE ?= localhost/skymill-provider:scoped-qualification
-COMPOSITION_SKYMILL_CHECKOUT ?= .qualification-skymill-source
+COMPOSITION_SKYMILL_CHECKOUT ?= compositions/.qualification-skymill-source
 
-COMPOSITION_LOGMA_CHECKOUT ?= logma-qualification
+COMPOSITION_LOGMA_CHECKOUT ?= compositions/logma-qualification
 COMPOSITION_TIMER_STATE_MODE ?= 0
 COMPOSITION_STRICT_READINESS_MODE ?= 0
 COMPOSITION_PRODUCTION_ACL_MODE ?= 0
 COMPOSITION ?= fatline
 GATE ?= all
 LOG ?= 0
-LOG_DIR ?= $(CURDIR)/qualification-logs
-LOG_NAME ?= $(if $(filter qualify-plan,$(MAKECMDGOALS)),plan-$(PLAN_CHECKOUT)-$(PLAN_GATE),$(if $(filter qualify-composition,$(MAKECMDGOALS)),fatline-$(GATE),$(firstword $(MAKECMDGOALS))))
+LOG_DIR ?= $(NIX_XD_ROOT)/local/logs
+LOG_NAME ?= qualification-$(if $(filter qualify-plan,$(MAKECMDGOALS)),plan-$(subst /,-,$(PLAN_CHECKOUT))-$(PLAN_GATE),$(if $(filter qualify-composition,$(MAKECMDGOALS)),composition-$(COMPOSITION)-$(GATE),$(firstword $(MAKECMDGOALS))))-$(SCOPE)
 QUADLET ?= 0
 QUADLET_PROVIDER_ENV = $(if $(filter 1,$(QUADLET)),COMPOSITION_NGINX_QUADLET_MODE=1 COMPOSITION_REDIS_QUADLET_MODE=1 COMPOSITION_QUADLET_MODE=1)
-QUALIFY_AGNI ?= $(WORKSPACES)/agni
-FATLINE_FLAKE ?= nix-alpine/release/components/nginx
+QUALIFY_AGNI ?= $(COMPOSITIONS_ROOT)/agni
+FATLINE_FLAKE ?= $(NIX_ALPINE_CHECKOUT_PATH)/release/components/nginx
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
 
 # Composition gates dispatch through shell scripts that invoke nested make.
 # Export qualification inputs so every child make uses the caller's scope,
 # workspaces, source pins, and toolbox identity.
-export SCOPE CONTAINER SERVICE VOLUME WORKSPACES WORKSPACE_KEY NIX_ALPINE_ROOT NIX_ALPINE_SOURCE_REV NIX_ALPINE_SOURCE_DATE NIX_ALPINE_VERSION IMAGE NIX_ALPINE_HOME NIX_ALPINE_STATE_ROOT
+export SCOPE CONTAINER SERVICE VOLUME WORKSPACES WORKSPACE_KEY NIX_ALPINE_ROOT NIX_ALPINE_CHECKOUT_PATH NIX_ALPINE_CHECKOUT NIX_XD_ROOT NIX_ALPINE_WORKSPACE_ROOT COMPOSITIONS_ROOT NIX_ALPINE_SOURCE_REV NIX_ALPINE_SOURCE_DATE NIX_ALPINE_VERSION IMAGE NIX_ALPINE_HOME NIX_ALPINE_STATE_ROOT
 export COMPOSITION GATE LOG LOG_DIR LOG_NAME QUADLET
 export COMPOSITION_AGNI_BRANCH COMPOSITION_AGNI_REV COMPOSITION_AGNI_CHECKOUT COMPOSITION_AGNI_SOURCE
 export COMPOSITION_REDIS_IMAGE COMPOSITION_NGINX_IMAGE COMPOSITION_LOGMA_IMAGE
@@ -88,14 +98,23 @@ export COMPOSITION_TIMER_STATE_MODE COMPOSITION_STRICT_READINESS_MODE COMPOSITIO
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
+.PHONY: qualify-plan qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
+PRINT_CONFIG ?= CONTAINER
+.PHONY: print-config
+print-config:
+	@case "$(PRINT_CONFIG)" in CONTAINER|IMAGE|VOLUME|SERVICE|WORKSPACES|NIX_XD_ROOT|NIX_ALPINE_VERSION|NIX_ALPINE_CHECKOUT_PATH|LOG_DIR) printf '%s\n' "$($(PRINT_CONFIG))";; *) echo "Unsupported PRINT_CONFIG=$(PRINT_CONFIG)" >&2; exit 2;; esac
+
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
 	@echo "make qualify-coreos-profile COREOS_PROFILE=name COREOS_PROFILE_BRANCH=branch LOG=1 (caller-owned profile, generic QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-deployment (build and inspect generated Agni deployment; no activation)"
-	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=name PLAN_FILE=path PLAN_RUNNER=path GATE=all (generic plan dispatcher)"
+	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=compositions/name PLAN_FILE=path GATE=all (generic plan dispatcher)"
+	@echo "make print-config PRINT_CONFIG=CONTAINER|IMAGE|VOLUME|SERVICE|WORKSPACES|NIX_XD_ROOT|NIX_ALPINE_VERSION|NIX_ALPINE_CHECKOUT_PATH|LOG_DIR"
+	@echo "Workspace root: $(NIX_XD_ROOT) (toolbox mount /workspaces)"
+	@echo "Qualification logs: $(LOG_DIR) (override with LOG_DIR=...)"
+	@echo "Composition checkouts: $(COMPOSITIONS_ROOT)"
 	@echo "make inventory RESOURCE=units|quadlets|containers|networks|images|volumes|paths PREFIX=... PATHS=... PATH_DEPTH=... (read-only)"
 	@echo "make cleanup RESOURCE=... PREFIX=... DRY_RUN=1|0 (literal prefix; dry-run by default)"
 	@echo "make cleanup-run RUN_PREFIX=... DRY_RUN=1|0 (remove one qualification run; shared stores/images are kept)"
@@ -107,7 +126,7 @@ help:
 	@echo "make qualify-composition COMPOSITION=skymill-provider (pinned Skymill provider integration)"
 	@echo "make qualify-composition (disposable Redis -> Nginx -> Logma runtime integration)"
 	@echo "make qualify-composition-preflight (verify Agni Nix topology and immutable local images; no activation)"
-	@echo "make qualify-process FLAKE=nix-alpine/release/components/redis (component process gate)"
+	@echo "make qualify-process FLAKE=$(NIX_ALPINE_CHECKOUT_PATH)/release/components/redis (component process gate)"
 	@echo "make qualify-service QUALIFY_COMPONENT=redis|logma|skymill|nginx (Smoke-owned runtime gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
@@ -198,8 +217,8 @@ qualify-component:
 # Reuse source synchronization and Nix artifact loading for Fatline's
 # infrastructure images. No registry, service installation, or activation.
 fatline-images:
-	@$(MAKE) build FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
-	@$(MAKE) image-load FLAKE=nix-alpine/release/components/redis TARGET='#image' SCOPE="$(SCOPE)"
+	@$(MAKE) build FLAKE="$(NIX_ALPINE_CHECKOUT_PATH)/release/components/redis" TARGET='#image' SCOPE="$(SCOPE)"
+	@$(MAKE) image-load FLAKE="$(NIX_ALPINE_CHECKOUT_PATH)/release/components/redis" TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) build FLAKE="$(FATLINE_FLAKE)" TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-load FLAKE="$(FATLINE_FLAKE)" TARGET='#image' SCOPE="$(SCOPE)"
 	@$(MAKE) image-inspect SCOPE="$(SCOPE)"
@@ -209,7 +228,7 @@ fatline-images:
 COMPOSE_LEDGER ?= /run/nix-alpine/releases
 compose:
 	@test -n "$(NAME)" || { echo "NAME required" >&2; exit 2; }
-	@podman exec -w /workspaces/nix-alpine/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces
+	@podman exec -w /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces
 
 compose-show:
 	@podman exec "$(CONTAINER)" cat /workspaces/.compositions/$(NAME)/composition.lock.json
@@ -241,7 +260,7 @@ diagnose-toolbox:
 qualify-toolbox:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "toolbox-smoke" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "qualification-toolbox-$(SCOPE)" -- $(MAKE) --no-print-directory qualify-toolbox LOG=0; \
 	else \
 	  bash ./qualify-toolbox.sh "$(CONTAINER)" "$(SERVICE)" "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(QUALIFY_FLAKE)" "$(NIX_ALPINE_VERSION)" "$(NIX_ALPINE_SOURCE_REV)"; \
 	fi
@@ -445,7 +464,7 @@ test-go-sync:
 test-workspace:
 	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./httpapi"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
+	@podman exec -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
 # Re-enter Make after fast-forward so updated recipes take effect.
 test-workspace-race-latest:
 	@$(MAKE) self-update FORCE="$(FORCE)"
@@ -454,10 +473,10 @@ test-workspace-race-latest:
 test-workspace-race:
 	@test -n "$(REPO)" || { echo "REPO is required"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/$(notdir $(REPO))" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
+	@podman exec -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
 bootstrap:
-	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_CHECKOUT="$(NIX_ALPINE_CHECKOUT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
+	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_CHECKOUT_PATH="$(NIX_ALPINE_CHECKOUT_PATH)" NIX_ALPINE_CHECKOUT="$(NIX_ALPINE_CHECKOUT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
 uninstall:
 	SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" bash ./uninstall.sh
 start:
@@ -552,7 +571,7 @@ release-lock:
 	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake lock
 
 release-check:
-	@test -f "$(WORKSPACES)/nix-alpine/release/flake.lock" || { echo "Run make release-lock and commit release/flake.lock first" >&2; exit 2; }
+	@test -f "$(WORKSPACES)/$(NIX_ALPINE_CHECKOUT_PATH)/release/flake.lock" || { echo "Run make release-lock and commit release/flake.lock first" >&2; exit 2; }
 	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake check --no-update-lock-file .
 	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix run --no-update-lock-file .#release-metadata -- --help >/dev/null 2>&1; code=$$?; test "$$code" -eq 2
 
@@ -663,7 +682,7 @@ export COREOS_GUEST_SSH_USER
 COREOS_PROFILE ?=
 COREOS_PROFILE_BRANCH ?=
 COREOS_PROFILE_REV ?=
-COREOS_PROFILE_CHECKOUT ?= agni-profile
+COREOS_PROFILE_CHECKOUT ?= compositions/agni-profile
 COREOS_PROFILE_OUTPUT ?= $(WORKSPACES)/.coreos-profiles/$(COREOS_PROFILE)/$(SCOPE)
 COREOS_PROFILE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/$(COREOS_PROFILE)/$(SCOPE)
 COREOS_PROFILE_UNIT ?= coreos-qemu-$(COREOS_PROFILE)-$(SCOPE)
@@ -693,7 +712,7 @@ qualify-coreos-qemu:
 	  if (( web_port_num < 1024 || web_port_num > 65535 )); then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
 	fi
 	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-qemu" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-qemu-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
 	  $(COREOS_MAKE) ensure-coreos-state-mount; \
@@ -713,7 +732,7 @@ qualify-coreos-qemu:
 qualify-coreos-guest-transient:
 	@if [[ -z "$(COREOS_GUEST_HOST)" || -z "$(COREOS_GUEST_KEY)" ]]; then echo "Set COREOS_GUEST_HOST and COREOS_GUEST_KEY (for GCP, point HOST/PORT at the local IAP tunnel)" >&2; exit 2; fi
 	@for command in ssh scp; do command -v "$$command" >/dev/null || { echo "Missing host command: $$command" >&2; exit 2; }; done
-	@if [[ "$(LOG)" == 1 ]]; then bash ./logged-run.sh "$(LOG_DIR)" "coreos-guest-transient" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-guest-transient LOG=0; \
+	@if [[ "$(LOG)" == 1 ]]; then bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-guest-transient-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-guest-transient LOG=0; \
 	else bash ./coreos-guest-transient-qualify.sh "$(COREOS_GUEST_HOST)" "$(COREOS_GUEST_PORT)" "$(COREOS_GUEST_KEY)" "$(COREOS_GUEST_COMPOSITION)" "$(COREOS_GUEST_RUNTIME)" "$(COREOS_GUEST_PAYLOAD)"; fi
 
 qualify-coreos-profile:
@@ -721,7 +740,7 @@ qualify-coreos-profile:
 	@test -n "$(COREOS_PROFILE_BRANCH)" || { echo "COREOS_PROFILE_BRANCH is required" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "coreos-profile-$(COREOS_PROFILE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-profile COREOS_PROFILE="$(COREOS_PROFILE)" LOG=0; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-profile-$(COREOS_PROFILE)-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-profile COREOS_PROFILE="$(COREOS_PROFILE)" LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
 	  $(COREOS_MAKE) ensure-coreos-state-mount; \
