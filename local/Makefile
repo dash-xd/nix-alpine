@@ -56,6 +56,7 @@ QUALIFY_FLAKE ?= $(NIX_ALPINE_TOOLBOX_FLAKE)
 REPO ?=
 BRANCH ?= main
 SYNC_NAME ?= compositions/$(notdir $(REPO))
+SYNC_REV ?=
 LOG ?= 0
 LOG_DIR ?= $(NIX_XD_ROOT)/local/logs
 LOG_NAME ?= qualification-$(if $(filter qualify-plan,$(MAKECMDGOALS)),plan-$(subst /,-,$(PLAN_CHECKOUT))-$(PLAN_GATE),$(firstword $(MAKECMDGOALS)))-$(SCOPE)
@@ -105,7 +106,7 @@ help:
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make image-archives IMAGE_ARCHIVE_ACTION=import|export IMAGE_ARCHIVE_DIR=path IMAGE_ARCHIVE_IMAGE_FILE=path (verify/import or export selected image archives)"
-	@echo "make sync REPO=owner/repo BRANCH=branch (clone or fast-forward a workspace repository)"
+	@echo "make sync REPO=owner/repo BRANCH=branch [SYNC_REV=commit] (clone or synchronize a workspace repository; exact detached revision when set)"
 	@echo "make sync-component REPO=owner/repo BRANCH=branch (refresh a workspace source)"
 	@echo "make qualify-component REPO=owner/repo BRANCH=branch (sync and run caller flake gates)"
 	@echo "make compose NAME=example WITH=component@version... (Nix app; requires ledger mount)"
@@ -166,7 +167,7 @@ image-archives:
 	@bash ./ci-image-archives.sh "$(IMAGE_ARCHIVE_ACTION)" "$(IMAGE_ARCHIVE_DIR)" "@$(IMAGE_ARCHIVE_IMAGE_FILE)"
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
-	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)"
+	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)" "$(SYNC_REV)"
 # Refresh a component without rebuilding images or modifying release records.
 sync-component:
 	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
@@ -231,13 +232,13 @@ PLAN_ARTIFACT_MANIFEST ?=
 RETAIN ?= 0
 PLAN_GATE ?= $(GATE)
 qualify-plan:
-	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
+	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_REV)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_REV, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(RETAIN)" != 0 && "$(RETAIN)" != 1 ]]; then echo "RETAIN must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(LOG)" == 1 ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_SOURCES="$(PLAN_SOURCES)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" PLAN_GATE="$(PLAN_GATE)" RETAIN="$(RETAIN)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
 	else \
-	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" WORKSPACES="$(WORKSPACES)"; \
+	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" SYNC_REV="$(PLAN_REV)" WORKSPACES="$(WORKSPACES)"; \
 	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$(WORKSPACES)/$(PLAN_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
 	  [[ "$(PLAN_FILE)" != /* && "$(PLAN_FILE)" != *..* ]] || { echo "PLAN_FILE must be relative without traversal" >&2; exit 2; }; \
 	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FILE)" || { echo "Plan file not found: $(PLAN_FILE)" >&2; exit 2; }; \
