@@ -40,7 +40,7 @@ printf '[' > "$gates_file"
 failed=0
 for gate in "${gates[@]}"; do
   log="$evidence_dir/$gate.log"
-  if podman exec -w "$source" "$container" nix run "${source}#$gate" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
+  if podman exec "${nix_env[@]}" -w "$source" "$container" nix run "${source}#$gate" > "$log" 2>&1; then code=0; else code=$?; failed=1; fi
   hash="$(sha256sum "$log" | cut -d' ' -f1)"
   [[ "$gate" == "${gates[0]}" ]] || printf ',' >> "$gates_file"
   jq -cn --arg name "$gate" --arg sha "$hash" --argjson exit_code "$code" \
