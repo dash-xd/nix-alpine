@@ -40,6 +40,20 @@ workspaces=$(realpath -m -- "$workspaces")
 quadlet_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 systemd_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 runtime_dir="$workspaces/.nix-alpine-runtime"
+if [[ -L "$runtime_dir" ]]; then
+  echo "Refusing cleanup: workspace runtime root is a symlink: $runtime_dir" >&2
+  exit 1
+elif [[ -e "$runtime_dir" ]]; then
+  [[ -d "$runtime_dir" ]] || {
+    echo "Refusing cleanup: workspace runtime root is not a directory: $runtime_dir" >&2
+    exit 1
+  }
+  resolved_runtime_dir=$(realpath -- "$runtime_dir")
+  [[ "$resolved_runtime_dir" == "$runtime_dir" ]] || {
+    echo "Refusing cleanup: workspace runtime root resolves elsewhere: $resolved_runtime_dir" >&2
+    exit 1
+  }
+fi
 
 units=()
 quadlets=()
@@ -86,7 +100,12 @@ done <<< "$networks_output"
 if [[ -d "$runtime_dir" ]]; then
   for path in "$runtime_dir/$run_prefix".*; do
     [[ -d "$path" && ! -L "$path" ]] || continue
-    runtime_dirs+=("$path")
+    resolved_path=$(realpath -- "$path")
+    [[ "$resolved_path" == "$runtime_dir/"* ]] || {
+      echo "Refusing cleanup: runtime path escaped workspace root: $resolved_path" >&2
+      exit 1
+    }
+    runtime_dirs+=("$resolved_path")
   done
 fi
 
@@ -148,6 +167,11 @@ for path in "${runtime_dirs[@]}"; do
     echo "Refusing to remove changed runtime path: $path" >&2
     exit 1
   }
+  resolved_path=$(realpath -- "$path")
+  [[ "$resolved_path" == "$runtime_dir/"* ]] || {
+    echo "Refusing to remove changed runtime path outside workspace: $resolved_path" >&2
+    exit 1
+  }
   echo "Removing workspace runtime directory: $path"
   rm -rf -- "$path"
 done
@@ -156,4 +180,3 @@ if [[ -d "$runtime_dir" ]]; then
   find "$runtime_dir" -mindepth 1 -depth -type d -empty -delete
 fi
 echo "Scoped cleanup complete. Shared images, volumes, stores, logs, and checkouts were preserved."
-
