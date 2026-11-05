@@ -35,19 +35,20 @@ The toolbox image tag identifies the Nix-Alpine source date and commit, for exam
 
 ## Caller-owned plan qualification
 
-`make qualify-plan` is the generic composition entry point. Make synchronizes a caller-selected plan checkout, ensures the versioned toolbox and store exist, and starts a disposable Nix-Alpine runtime. The selected plan runner executes inside that runtime, using its pinned toolchain and mounted workspace. The host adapter exposes only the calling user's rootless Podman socket, systemd-user bus, and Quadlet directories required to test the host runtime. It has no system-level Podman or systemd access.
+`make qualify-plan` is the generic plan entry point. Make synchronizes a caller-selected checkout to an exact commit, synchronizes its declared source inputs, ensures the versioned toolbox and store exist, and starts a disposable Nix-Alpine runtime. Inside that runtime it invokes the caller's selected flake app. Make never accepts or executes a caller-selected script path. The host adapter exposes the calling user's rootless Podman socket, systemd-user bus, and Quadlet directories needed to exercise the host topology; it has no system-level Podman or systemd access.
 
-A plan identifies its source, plan file, runner, pins, artifacts, and gates. Run it through Make by supplying those values:
+The selected flake app accepts the shared plan arguments and interprets the caller-owned module graph. For example:
 
 ```bash
 make qualify-plan \
-  PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=<commit> \
+  PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=<full-commit-sha> \
   PLAN_CHECKOUT=compositions/name \
-  PLAN_FILE=path/to/plan.json PLAN_RUNNER=path/to/run-plan.sh \
+  PLAN_FILE=path/to/plan.json \
+  PLAN_FLAKE=path/to/flake PLAN_TARGET=qualify-plan \
   PLAN_GATE=all GATE=all LOG=1
 ```
 
-The caller owns application behavior and assertions. Nix-Alpine owns the reusable execution toolchain and host runtime adapter. This target qualifies the selected host Podman/systemd topology; it does not claim to qualify another operating system or a virtual machine.
+Plans use the versioned module protocol documented in [PLAN_INTERFACE.md](PLAN_INTERFACE.md). The caller owns module behavior, pins, artifacts, assertions, and cleanup. Nix-Alpine owns the generic execution toolchain and host runtime adapter. This target qualifies the selected host Podman/systemd topology; it does not claim to qualify another operating system or a virtual machine.
 
 Plan runs are ephemeral by default. The caller's runner owns its scoped setup and cleanup. Set `RETAIN=1` only when the plan supports retaining its final runtime for inspection. Use generic Make inventory and cleanup targets to inspect or remove host resources:
 
