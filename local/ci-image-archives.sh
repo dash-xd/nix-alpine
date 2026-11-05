@@ -11,7 +11,7 @@ if (($# == 1)) && [[ "$1" == @* ]]; then
 else
   images=("$@")
 fi
-(('${#images[@]}')) || { echo "At least one image is required" >&2; exit 2; }
+((${#images[@]})) || { echo "At least one image is required" >&2; exit 2; }
 for image in "${images[@]}"; do
   [[ "$image" =~ ^[a-zA-Z0-9_./:-]+$ ]] || { echo "Invalid image ref: $image" >&2; exit 2; }
 done
@@ -35,7 +35,7 @@ if [[ "$mode" == export ]]; then
   echo "PASS: exported $image_count immutable image archives"
 else
   [[ -s "$manifest" ]] || { echo "Missing archive manifest" >&2; exit 2; }
-  for image in "$@"; do
+  for image in "${images[@]}"; do
     row=$(awk -F '\t' -v image="$image" '$1==image {print; n++} END {if(n!=1) exit 1}' "$manifest") || { echo "Missing/duplicate image: $image" >&2; exit 1; }
     IFS=$'\t' read -r ref expected_id filename digest <<< "$row"
     [[ "$filename" =~ ^[a-f0-9]{64}\.tar\.gz$ && "$digest" =~ ^[a-f0-9]{64}$ && "$expected_id" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid manifest entry" >&2; exit 1; }
