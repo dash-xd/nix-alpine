@@ -29,8 +29,8 @@ A plan uses `schemaVersion: 2` and `protocolVersion: 1`. It declares modules by 
 - `inputs`: the module's declared configuration
 - `outputs`: named values or evidence the module produces
 - `dependsOn`: module IDs that must complete first
-- `cleanup`: a policy describing whether resources are preserved or cleaned up
+- `cleanup`: a policy describing whether resources are preserved, always removed, or normally removed with an explicit `RETAIN` override
 
-Each gate lists its entry modules. The plan app resolves dependencies in topological order, rejects unknown modules and cycles, and executes shared dependencies once per plan invocation. A module's cleanup handler owns resources created by that module. `always` cleanup must also be safe after a partial setup or failed assertion.
+Each gate lists its entry modules. The plan app resolves dependencies in topological order, rejects unknown modules and cycles, and executes shared dependencies once per plan invocation. A module's cleanup handler owns resources created by that module. `always` cleanup must be safe after partial setup or failed assertions. `retainable` cleanup is the default for disposable runtime modules; the plan may retain the final selected runtime only when the caller explicitly sets `RETAIN=1`.
 
 The module kinds and their input/output contracts belong to the plan implementation in its flake. Nix-Alpine only transports the plan and invokes its selected app; it does not know Fatline, Agni, service names, or gate meanings.
