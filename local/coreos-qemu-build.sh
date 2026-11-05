@@ -48,6 +48,7 @@ rm -f -- "$probe"
 trap - EXIT
 
 podman_args=(podman exec)
+[[ -n "${NIX_CONFIG:-}" ]] && podman_args+=(--env NIX_CONFIG)
 ssh_key="${COREOS_TEST_SSH_PUBLIC_KEY:-}"
 [[ -z "$ssh_key" ]] || podman_args+=(-e "COREOS_TEST_SSH_PUBLIC_KEY=$ssh_key")
 exec "${podman_args[@]}" "$container" nix run --no-write-lock-file "$toolbox_flake#coreos-qemu-build" -- \
