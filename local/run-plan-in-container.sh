@@ -44,6 +44,12 @@ if [[ -n "$artifact_manifest" ]]; then
   manifest_in_container=/run/plan-artifacts/manifest.tsv
 fi
 
+runtime_root_host="$workspaces/.nix-alpine-runtime"
+[[ ! -L "$runtime_root_host" ]] || die "Runtime scratch root must not be a symlink"
+mkdir -p "$runtime_root_host"
+runtime_root_host="$(realpath "$runtime_root_host")"
+[[ "$runtime_root_host" == "$workspaces/.nix-alpine-runtime" ]] || die "Runtime scratch root escaped WORKSPACES"
+
 runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 podman_socket="$runtime_dir/podman/podman.sock"
@@ -89,8 +95,8 @@ echo "Plan: $workspaces/$checkout/$plan_file (gate: $gate)"
 podman_args=(run --rm --name "$task" \
   --userns=keep-id:uid=1000,gid=1000 --network host --cap-drop ALL --security-opt no-new-privileges \
   --volume "$volume:/nix" \
-  --volume "$workspaces:/workspaces:rw" \
-  --volume "$workspaces:$workspaces:rw" \
+  --volume "$workspaces:/workspaces:ro" \
+  --volume "$runtime_root_host:$runtime_root_host:rw" \
   --volume "$plan_tmp:$plan_tmp:rw" \
   --volume "$podman_socket:/run/host-user/podman/podman.sock:rw" \
   --volume "$user_bus:/run/host-user/bus:rw" \
