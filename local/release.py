@@ -29,6 +29,10 @@ def version_valid(v):
         return False
     return len(parts) == 3 or int(parts[3]) <= 18446744073709551615
 
+def podman_exec(*args, capture=True):
+    env_args = ("--env", "NIX_CONFIG") if os.environ.get("NIX_CONFIG") else ()
+    return run("podman", "exec", *env_args, *args, capture=capture)
+
 def image_id(ref):
     return run("podman", "image", "inspect", ref, "--format", "{{.Id}}")
 
@@ -85,8 +89,8 @@ def main():
                 raise RuntimeError("source checkout is dirty; commit or clean before releasing")
             flake_ref = a.flake + a.target
             # Build first; a successful path-info must identify a real store output.
-            run("podman", "exec", a.container, "nix", "build", "--no-link", flake_ref, capture=False)
-            store_path = run("podman", "exec", a.container, "nix", "path-info", flake_ref)
+            podman_exec(a.container, "nix", "build", "--no-link", flake_ref, capture=False)
+            store_path = podman_exec(a.container, "nix", "path-info", flake_ref)
             if not store_path.startswith("/nix/store/") or "\n" in store_path:
                 raise RuntimeError("expected exactly one Nix store output")
             digest = image_id(a.image)
@@ -120,7 +124,7 @@ def main():
             raise RuntimeError("source SHA changed since candidate creation")
         if run("git", "-C", record["source_path"], "status", "--porcelain", "--untracked-files=all"):
             raise RuntimeError("source checkout became dirty")
-        if run("podman", "exec", a.container, "nix", "path-info", record["flake_ref"]) != record["nix_output"]:
+        if podman_exec(a.container, "nix", "path-info", record["flake_ref"]) != record["nix_output"]:
             raise RuntimeError("Nix output changed since candidate creation")
         evidence_dir = root / "evidence" / a.version
         evidence_dir.mkdir(parents=True, exist_ok=True)
