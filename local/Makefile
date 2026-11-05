@@ -85,7 +85,7 @@ help:
 	@echo "make qualify-coreos-qemu COREOS_INPUT_REPO=owner/repo COREOS_INPUT_BRANCH=branch COREOS_INPUT_REV=sha COREOS_INPUT_CHECKOUT=compositions/name COREOS_BUILD_FLAKE=path COREOS_CONFIG_DIR=path COREOS_RESOURCES=path COREOS_CONFIG_NAME=file.bu COREOS_COMPOSITION_NAME=name COREOS_QEMU_IMAGE=image:tag (generic FCOS/QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
-	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=compositions/name PLAN_FILE=path GATE=all (generic plan dispatcher)"
+	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_REV=sha PLAN_CHECKOUT=path PLAN_FILE=path PLAN_FLAKE=path [PLAN_TARGET=qualify-plan] GATE=all (generic flake plan dispatcher)"
 	@echo "make print-config PRINT_CONFIG=CONTAINER|IMAGE|VOLUME|SERVICE|WORKSPACES|NIX_XD_ROOT|NIX_ALPINE_VERSION|NIX_ALPINE_CHECKOUT_PATH|LOG_DIR"
 	@echo "Workspace root: $(NIX_XD_ROOT) (toolbox mount /workspaces)"
 	@echo "Qualification logs: $(LOG_DIR) (override with LOG_DIR=...)"
