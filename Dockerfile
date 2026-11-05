@@ -40,7 +40,7 @@ COPY --chown=nixuser:nixuser \
     config/nix.conf \
     /home/nixuser/.config/nix/nix.conf
 
-RUN curl -L https://nixos.org/nix/install | bash -s -- --no-daemon
+RUN curl --fail --location --show-error https://releases.nixos.org/nix/nix-2.35.4/install | bash -s -- --no-daemon
 
 ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH \
     NIXPKGS_ALLOW_UNFREE=1
