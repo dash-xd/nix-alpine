@@ -72,7 +72,7 @@ export GATE LOG LOG_DIR LOG_NAME
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan test-go test-go-sync compose-readiness qualify-process compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox
+.PHONY: qualify-plan test-go test-go-sync compose-readiness qualify-process compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
 PRINT_CONFIG ?= CONTAINER
 .PHONY: print-config
 print-config:
@@ -103,6 +103,7 @@ help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
+	@echo "make image-archives IMAGE_ARCHIVE_ACTION=import|export IMAGE_ARCHIVE_DIR=path IMAGE_ARCHIVE_IMAGE_FILE=path (verify/import or export selected image archives)"
 	@echo "make sync REPO=owner/repo BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
@@ -153,6 +154,14 @@ show-image-layers:
 	@python3 ./show-image-layers.py "$(CONTAINER)" "$(IMAGE)"
 image-prune:
 	@bash ./images.sh prune "$(CONTAINER)" "$(IMAGE)"
+
+IMAGE_ARCHIVE_ACTION ?=
+IMAGE_ARCHIVE_DIR ?=
+IMAGE_ARCHIVE_IMAGE_FILE ?=
+image-archives:
+	@test "$(IMAGE_ARCHIVE_ACTION)" = import -o "$(IMAGE_ARCHIVE_ACTION)" = export || { echo "IMAGE_ARCHIVE_ACTION must be import or export" >&2; exit 2; }
+	@test -n "$(IMAGE_ARCHIVE_DIR)" -a -s "$(IMAGE_ARCHIVE_IMAGE_FILE)" || { echo "Set IMAGE_ARCHIVE_DIR and IMAGE_ARCHIVE_IMAGE_FILE" >&2; exit 2; }
+	@bash ./ci-image-archives.sh "$(IMAGE_ARCHIVE_ACTION)" "$(IMAGE_ARCHIVE_DIR)" "@$(IMAGE_ARCHIVE_IMAGE_FILE)"
 sync:
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
 	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)"
