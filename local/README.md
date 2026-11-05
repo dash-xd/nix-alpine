@@ -31,7 +31,7 @@ The toolbox image tag identifies the Nix-Alpine source date and commit, for exam
 
 `make refresh` fast-forwards the current checkout, then rebuilds and starts the versioned instance. `make uninstall` removes only the selected instance and its scoped Nix store. Review the selected `SCOPE`, `CONTAINER`, and `VOLUME` before uninstalling.
 
-`make qualify-toolbox` verifies the systemd-user service, evaluates the selected toolbox flake, creates a small Nix store output, then confirms a second rootless Podman container can read that output through the same named `/nix` volume. It does not require host Nix and does not expose the host's Podman volume storage path.
+Before starting the toolbox, bootstrap merges the current image's Nix profile closure into the persistent named store with `nix copy`, preserving older registered store paths, then updates the per-user profile link. The installer release is pinned in the Dockerfile. `make qualify-toolbox` verifies the systemd-user service, evaluates the selected toolbox flake, writes a Nix store output, and confirms a second rootless Podman container can read it. It repeats the profile seeding and peer-container check against a fresh temporary volume, then removes that volume. It does not require host Nix or expose the host's Podman volume storage path.
 
 ## Caller-owned plan qualification
 
