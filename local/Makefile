@@ -16,6 +16,8 @@ VOLUME ?= nix-alpine-$(SCOPE)-store
 IMAGE ?= localhost/nix.xd:$(NIX_ALPINE_VERSION)
 NIX_ALPINE_HOME ?= $(HOME)
 NIX_ALPINE_STATE_ROOT ?= $(if $(XDG_STATE_HOME),$(XDG_STATE_HOME),$(HOME)/.local/state)/nix.xd
+NIX_EXEC_ARGS = $(if $(strip $(NIX_CONFIG)),--env NIX_CONFIG,)
+export NIX_CONFIG
 FLAKE ?= .
 TARGET ?=
 # Image archive is resolved from the selected flake output, never a hard-coded store path.
@@ -182,7 +184,7 @@ qualify-component:
 COMPOSE_LEDGER ?= /run/nix-alpine/releases
 compose:
 	@test -n "$(NAME)" || { echo "NAME required" >&2; exit 2; }
-	@podman exec -w /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces
+	@podman exec $(NIX_EXEC_ARGS) -w /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/release "$(CONTAINER)" nix run .#compose -- --name "$(NAME)" --with "$(WITH)" --ledger "$(COMPOSE_LEDGER)" --workspace /workspaces
 
 compose-show:
 	@podman exec "$(CONTAINER)" cat /workspaces/.compositions/$(NAME)/composition.lock.json
@@ -209,8 +211,8 @@ qualify-workspace:
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#qualify-integration' SCOPE="$(SCOPE)"
 # Diagnose the actual environment before changing toolbox execution.
 diagnose-toolbox:
-	@podman exec "$(CONTAINER)" nix --version
-	@podman exec "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c go version
+	@podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix --version
+	@podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c go version
 qualify-toolbox:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(LOG)" == 1 ]]; then \
@@ -258,13 +260,13 @@ qualify-plan:
 test-go:
 	@test -f "$(WORKSPACES)/$(FLAKE)/go.mod" || { echo "Go module not found: $(WORKSPACES)/$(FLAKE)/go.mod (set FLAKE=workspace/path)" >&2; exit 2; }
 	@case "$(CGO)" in 0|1) ;; *) echo "CGO must be 0 or 1" >&2; exit 2;; esac
-	@podman exec -w "$(FLAKE_PATH)" -e CGO_ENABLED="$(CGO)" -e GOWORK=off "$(CONTAINER)" \
+	@podman exec $(NIX_EXEC_ARGS) -w "$(FLAKE_PATH)" -e CGO_ENABLED="$(CGO)" -e GOWORK=off "$(CONTAINER)" \
 		nix develop --no-write-lock-file "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c \
 		go test -count=1 $(PACKAGE) $(ARGS)
 
 vet-go:
 	@test -f "$(WORKSPACES)/$(FLAKE)/go.mod" || { echo "Go module not found: $(WORKSPACES)/$(FLAKE)/go.mod (set FLAKE=workspace/path)" >&2; exit 2; }
-	@podman exec -w "$(FLAKE_PATH)" -e GOWORK=off "$(CONTAINER)" \
+	@podman exec $(NIX_EXEC_ARGS) -w "$(FLAKE_PATH)" -e GOWORK=off "$(CONTAINER)" \
 		nix develop --no-write-lock-file "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c \
 		go vet $(PACKAGE)
 
@@ -278,7 +280,7 @@ test-go-sync:
 test-workspace:
 	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./..."; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
+	@podman exec $(NIX_EXEC_ARGS) -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
 # Re-enter Make after fast-forward so updated recipes take effect.
 test-workspace-race-latest:
 	@$(MAKE) self-update FORCE="$(FORCE)"
@@ -287,7 +289,7 @@ test-workspace-race-latest:
 test-workspace-race:
 	@test -n "$(REPO)" || { echo "REPO is required"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
-	@podman exec -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
+	@podman exec $(NIX_EXEC_ARGS) -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
 bootstrap:
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_CHECKOUT_PATH="$(NIX_ALPINE_CHECKOUT_PATH)" NIX_ALPINE_CHECKOUT="$(NIX_ALPINE_CHECKOUT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
@@ -306,35 +308,35 @@ logs:
 shell:
 	podman exec -it "$(CONTAINER)" bash
 exec:
-	podman exec -it "$(CONTAINER)" $(CMD)
+	podman exec $(NIX_EXEC_ARGS) -it "$(CONTAINER)" $(CMD)
 ps:
 	podman ps -a --filter "name=^$(CONTAINER)$$"
 inspect:
 	podman inspect "$(CONTAINER)"
 show:
-	podman exec "$(CONTAINER)" nix flake show --no-write-lock-file "$(FLAKE_REF)"
+	podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix flake show --no-write-lock-file "$(FLAKE_REF)"
 check:
-	podman exec "$(CONTAINER)" nix flake check --no-write-lock-file "$(FLAKE_REF)"
+	podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix flake check --no-write-lock-file "$(FLAKE_REF)"
 build:
-	podman exec "$(CONTAINER)" nix build --no-write-lock-file --no-link "$(FLAKE_REF)"
+	podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix build --no-write-lock-file --no-link "$(FLAKE_REF)"
 path-info:
-	podman exec "$(CONTAINER)" nix path-info --no-write-lock-file "$(FLAKE_REF)"
+	podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix path-info --no-write-lock-file "$(FLAKE_REF)"
 image-load:
 	@bash ./image-store.sh "$(CONTAINER)" "$(VOLUME)" "$(FLAKE_REF)"
 image-inspect:
 	@podman images --no-trunc
 run:
-	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run --no-write-lock-file "$(FLAKE_REF)" -- $(ARGS)
+	podman exec $(NIX_EXEC_ARGS) -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix run --no-write-lock-file "$(FLAKE_REF)" -- $(ARGS)
 develop:
-	podman exec -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix develop --no-write-lock-file "$(FLAKE_REF)" -c bash
+	podman exec $(NIX_EXEC_ARGS) -it -w "$(FLAKE_PATH)" "$(CONTAINER)" nix develop --no-write-lock-file "$(FLAKE_REF)" -c bash
 store:
 	podman volume inspect "$(VOLUME)"
 store-info:
-	podman exec "$(CONTAINER)" nix store info
+	podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix store info
 parallel-build:
 	@test -n "$(PROJECTS)" || { echo "Specify PROJECTS='api worker frontend'"; exit 2; }
 	@set -e; pids=(); failed=0; for project in $(PROJECTS); do \
-	  podman exec "$(CONTAINER)" nix build --no-link "/workspaces/$$project" & pids+=("$$!"); \
+	  podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix build --no-link "/workspaces/$$project" & pids+=("$$!"); \
 	done; for pid in "$${pids[@]}"; do wait "$$pid" || failed=1; done; exit "$$failed"
 
 # All release state is per-user, per-component and guarded by an exclusive
@@ -350,7 +352,7 @@ release-candidate:
 	  imported="$$(mktemp "$$dir/.import.XXXXXXXX")"; \
 	  trap 'rm -f "$$metadata" "$$imported"' EXIT; \
 	  $(MAKE) build FLAKE="$(RELEASE_FLAKE)" TARGET="$(RELEASE_TARGET)" SCOPE="$(SCOPE)"; \
-	  podman exec "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)" >"$$metadata"; \
+	  podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)" >"$$metadata"; \
 	  output="$$(jq -er .nix_output "$$metadata")"; \
 	  bash ./release-import.sh "$(CONTAINER)" "$(VOLUME)" "$$output" "$$imported" >/dev/null; \
 	  RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh candidate "$(COMPONENT)" "$(RELEASE_VERSION)" "$$metadata" "$$imported"
@@ -363,13 +365,13 @@ release-qualify:
 release-metadata:
 	@test -n "$(REPO)" && test -n "$(RELEASE_VERSION)" || { echo "REPO and RELEASE_VERSION required" >&2; exit 2; }
 	@$(MAKE) build FLAKE="$(RELEASE_FLAKE)" TARGET="$(RELEASE_TARGET)" SCOPE="$(SCOPE)"
-	@podman exec "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)"
+	@podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix run "$(RELEASE_METADATA_FLAKE)#release-metadata" -- capture "$(COMPONENT)" "$(RELEASE_VERSION)" "$(RELEASE_SOURCE_CONTAINER)" "$(RELEASE_FLAKE)$(RELEASE_TARGET)"
 
 # Import an already built, explicitly selected Nix store archive. Host Podman
 # is the only image store touched; release-import.sh emits the image ID.
 release-import:
 	@test -n "$(RELEASE_VERSION)" && test -n "$(REPO)" || { echo "RELEASE_VERSION and REPO required" >&2; exit 2; }
-	@output="$$(podman exec "$(CONTAINER)" nix path-info "$(RELEASE_FLAKE)$(RELEASE_TARGET)")"; \
+	@output="$$(podman exec $(NIX_EXEC_ARGS) "$(CONTAINER)" nix path-info "$(RELEASE_FLAKE)$(RELEASE_TARGET)")"; \
 	  bash ./release-import.sh "$(CONTAINER)" "$(VOLUME)" "$$output" "$(RELEASE_IMPORT_RECORD)"
 
 # Contract tests with isolated host Podman facade; full runtime smoke requires the builder.
@@ -382,12 +384,12 @@ release-inspect:
 # Explicit local-only Nix release checks. The shared workspace mount ensures
 # release/flake.lock is written into the host checkout and can be committed.
 release-lock:
-	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake lock
+	@podman exec $(NIX_EXEC_ARGS) -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake lock
 
 release-check:
 	@test -f "$(WORKSPACES)/$(NIX_ALPINE_CHECKOUT_PATH)/release/flake.lock" || { echo "Run make release-lock and commit release/flake.lock first" >&2; exit 2; }
-	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake check --no-update-lock-file .
-	@podman exec -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix run --no-update-lock-file .#release-metadata -- --help >/dev/null 2>&1; code=$$?; test "$$code" -eq 2
+	@podman exec $(NIX_EXEC_ARGS) -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix flake check --no-update-lock-file .
+	@podman exec $(NIX_EXEC_ARGS) -w "$(RELEASE_METADATA_FLAKE)" "$(CONTAINER)" nix run --no-update-lock-file .#release-metadata -- --help >/dev/null 2>&1; code=$$?; test "$$code" -eq 2
 
 # Deliberately real local integration: no mocks, runner, registry or artifacts.
 # Existing candidate/qualified tags are rejected by the ledger.
