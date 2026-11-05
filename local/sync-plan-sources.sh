@@ -39,8 +39,8 @@ while IFS=$'\t' read -r repo revision checkout extra || [[ -n "${repo:-}" ]]; do
     echo "Origin mismatch for $checkout: expected $repo, got $actual_origin" >&2
     exit 1
   }
-  [[ -z "$(git -C "$path" status --porcelain --untracked-files=no)" ]] || {
-    echo "Tracked local modifications in $path; refusing to change the checkout" >&2
+  [[ -z "$(git -C "$path" status --porcelain --untracked-files=all)" ]] || {
+    echo "Local modifications or untracked files in $path; refusing to change the checkout" >&2
     exit 1
   }
 
