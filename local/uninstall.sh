@@ -7,7 +7,7 @@ for name in CONTAINER SERVICE VOLUME IMAGE; do
   [[ -n "${!name:-}" ]] || { echo "Set $name through the Makefile uninstall target" >&2; exit 2; }
 done
 [[ "$CONTAINER" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || { echo "Invalid container name" >&2; exit 2; }
-[[ "$SERVICE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*\\.service$ ]] || { echo "Invalid service name" >&2; exit 2; }
+[[ "$SERVICE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.service$ ]] || { echo "Invalid service name" >&2; exit 2; }
 [[ "$VOLUME" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || { echo "Invalid volume name" >&2; exit 2; }
 [[ "$IMAGE" != -* && "$IMAGE" != *[[:space:]]* ]] || { echo "Invalid image reference" >&2; exit 2; }
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
