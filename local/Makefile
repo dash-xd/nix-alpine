@@ -469,13 +469,14 @@ COREOS_INPUT_BRANCH ?=
 COREOS_INPUT_REV ?=
 COREOS_INPUT_CHECKOUT ?=
 COREOS_BUILD_FLAKE ?=
+COREOS_BUILD_TARGET ?= $(HASH)bootstrap
 COREOS_RUNNER_FLAKE ?= $(COREOS_BUILD_FLAKE)
 COREOS_RUNNER_TARGET ?= $(HASH)qemuRunner
 
 .PHONY: qualify-coreos-qemu qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
-	@if [[ -z "$(COREOS_INPUT_REPO)" || -z "$(COREOS_INPUT_BRANCH)" || -z "$(COREOS_INPUT_REV)" || -z "$(COREOS_INPUT_CHECKOUT)" || -z "$(COREOS_BUILD_FLAKE)" || -z "$(COREOS_CONFIG_DIR)" || -z "$(COREOS_RESOURCES)" || -z "$(COREOS_CONFIG_NAME)" || -z "$(COREOS_COMPOSITION_NAME)" || -z "$(COREOS_QEMU_IMAGE)" ]]; then echo "Set the pinned input repo/branch/revision/checkout, build flake, Butane config/resources, config name, composition name, and runner image" >&2; exit 2; fi
+	@if [[ -z "$(COREOS_INPUT_REPO)" || -z "$(COREOS_INPUT_BRANCH)" || -z "$(COREOS_INPUT_REV)" || -z "$(COREOS_INPUT_CHECKOUT)" || -z "$(COREOS_BUILD_FLAKE)" || -z "$(COREOS_BUILD_TARGET)" || -z "$(COREOS_CONFIG_DIR)" || -z "$(COREOS_RESOURCES)" || -z "$(COREOS_CONFIG_NAME)" || -z "$(COREOS_COMPOSITION_NAME)" || -z "$(COREOS_QEMU_IMAGE)" ]]; then echo "Set the pinned input repo/branch/revision/checkout, build flake, Butane config/resources, config name, composition name, and runner image" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
 	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
@@ -494,7 +495,7 @@ qualify-coreos-qemu:
 	  $(COREOS_MAKE) sync REPO="$(COREOS_INPUT_REPO)" BRANCH="$(COREOS_INPUT_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COREOS_INPUT_CHECKOUT)"; \
 	  git -C "$(WORKSPACES)/$(COREOS_INPUT_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COREOS_INPUT_REV)" >/dev/null || { echo "Input source does not match pinned revision $(COREOS_INPUT_REV)" >&2; exit 1; }; \
 	  if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then \
-	    bash ./coreos-qemu-transient-qualify.sh "$(COREOS_MAKE)" "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_RUNNER_FLAKE)" "$(COREOS_RUNNER_TARGET)" "$(COREOS_STATE)" "$(COREOS_UNIT)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_COMPOSITION_NAME)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)"; \
+	    bash ./coreos-qemu-transient-qualify.sh "$(COREOS_MAKE)" "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_BUILD_TARGET)" "$(COREOS_RUNNER_FLAKE)" "$(COREOS_RUNNER_TARGET)" "$(COREOS_STATE)" "$(COREOS_UNIT)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_COMPOSITION_NAME)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)"; \
 	  else \
 	    $(COREOS_MAKE) coreos-qemu-build; \
 	    $(COREOS_MAKE) build FLAKE="$(COREOS_INPUT_CHECKOUT)/$(COREOS_RUNNER_FLAKE)" TARGET="$(COREOS_RUNNER_TARGET)"; \
@@ -524,7 +525,7 @@ ensure-coreos-state-mount:
 	  [[ "$$actual" == "$$expected" ]] || { echo "Toolbox is missing the expected CoreOS state mount" >&2; exit 1; }
 coreos-qemu-build:
 	@$(COREOS_MAKE) ensure-coreos-state-mount
-	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
+	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_BUILD_TARGET)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
