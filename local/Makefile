@@ -92,7 +92,7 @@ help:
 	@echo "make cleanup-run RUN_PREFIX=... DRY_RUN=1|0 (remove one qualification run; shared stores/images are kept)"
 	@echo "make qualify-plan ... RETAIN=1 (retain the final selected gate for live inspection; default RETAIN=0)"
 
-	@echo "make qualify-process FLAKE=$(NIX_ALPINE_CHECKOUT_PATH)/release/components/redis (component process gate)"
+	@echo "make qualify-process FLAKE=$(NIX_ALPINE_CHECKOUT_PATH)/release/components/name (component process gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
 	@echo "make release-latest REPO=owner/repo COMPONENT=name RELEASE_FLAKE=/workspaces/checkout (auto CalVer + caller flake qualification)"
