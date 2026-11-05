@@ -72,7 +72,7 @@ export GATE LOG LOG_DIR LOG_NAME
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan test-go test-go-sync compose-readiness qualify-process compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
+.PHONY: qualify-plan test-go vet-go test-go-sync compose-readiness qualify-process compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
 PRINT_CONFIG ?= CONTAINER
 .PHONY: print-config
 print-config:
@@ -110,6 +110,7 @@ help:
 	@echo "make compose NAME=example WITH=component@version... (Nix app; requires ledger mount)"
 	@echo "make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./... (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make test-go FLAKE=workspace/path PACKAGE=./... (Go via Nix, CGO=0 by default)"
+	@echo "make vet-go FLAKE=workspace/path PACKAGE=./... (Go vet via Nix)"
 	@echo "make test-go FLAKE=workspace/path CGO=1 PACKAGE=./... (Nix Go and GCC)"
 	@echo "make test-go-sync REPO=owner/repo BRANCH=branch PACKAGE=./..."
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
@@ -260,6 +261,12 @@ test-go:
 	@podman exec -w "$(FLAKE_PATH)" -e CGO_ENABLED="$(CGO)" -e GOWORK=off "$(CONTAINER)" \
 		nix develop --no-write-lock-file "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c \
 		go test -count=1 $(PACKAGE) $(ARGS)
+
+vet-go:
+	@test -f "$(WORKSPACES)/$(FLAKE)/go.mod" || { echo "Go module not found: $(WORKSPACES)/$(FLAKE)/go.mod (set FLAKE=workspace/path)" >&2; exit 2; }
+	@podman exec -w "$(FLAKE_PATH)" -e GOWORK=off "$(CONTAINER)" \
+		nix develop --no-write-lock-file "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c \
+		go vet $(PACKAGE)
 
 test-go-sync:
 	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
