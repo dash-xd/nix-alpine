@@ -74,7 +74,7 @@ export GATE LOG LOG_DIR LOG_NAME
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan test-go vet-go test-go-sync compose-readiness qualify-process compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
+.PHONY: qualify-plan test-go vet-go test-go-sync compose-readiness compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
 PRINT_CONFIG ?= CONTAINER
 .PHONY: print-config
 print-config:
@@ -94,7 +94,6 @@ help:
 	@echo "make cleanup-run RUN_PREFIX=... DRY_RUN=1|0 (remove one qualification run; shared stores/images are kept)"
 	@echo "make qualify-plan ... RETAIN=1 (retain the final selected gate for live inspection; default RETAIN=0)"
 
-	@echo "make qualify-process FLAKE=$(NIX_ALPINE_CHECKOUT_PATH)/release/components/name (component process gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
 	@echo "make release-latest REPO=owner/repo COMPONENT=name RELEASE_FLAKE=/workspaces/checkout (auto CalVer + caller flake qualification)"
