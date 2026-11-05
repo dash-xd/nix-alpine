@@ -1,6 +1,0 @@
-{
-  "schema": 1,
-  "execute": true,
-  "gate": "systemd-capability",
-  "runner": "blacksmith-4vcpu-ubuntu-2404"
-}
