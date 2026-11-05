@@ -54,8 +54,8 @@ def main():
     p.add_argument("--image", help="already imported local Podman image reference")
     p.add_argument("--flake", help="path to flake inside Nix-Alpine container")
     p.add_argument("--target", help="Nix archive output, e.g. #provider-image")
-    p.add_argument("--container", default="nix-alpine-dev")
-    p.add_argument("--state", default=str(Path.home()/".local/state/nix-alpine/releases"))
+    p.add_argument("--container", required=True)
+    p.add_argument("--state", default=str(Path.home()/".local/state/nix.xd/releases"))
     p.add_argument("--gates", nargs="+", default=["#qualify", "#qualify-integration"])
     a = p.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]*", a.component):
@@ -90,7 +90,7 @@ def main():
             if not store_path.startswith("/nix/store/") or "\n" in store_path:
                 raise RuntimeError("expected exactly one Nix store output")
             digest = image_id(a.image)
-            candidate_tag = f"localhost/nix-alpine/{a.component}:candidate-{a.version}"
+            candidate_tag = f"localhost/nix.xd/{a.component}:candidate-{a.version}"
             try:
                 existing = image_id(candidate_tag)
             except subprocess.CalledProcessError:
