@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ "${1:-}" == --inside ]]; then
+  [[ -w /shared/nix ]] || { echo "Shared Nix volume is not writable by the mapped toolbox user" >&2; exit 1; }
   profile="$(readlink -f "$HOME/.nix-profile")"
   [[ "$profile" == /nix/store/* && -d "$profile" ]] || {
     echo "Current image Nix profile is not a valid store path: $profile" >&2
