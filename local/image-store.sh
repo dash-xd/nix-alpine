@@ -4,7 +4,9 @@ container="${1:?container required}"
 volume="${2:?volume required}"
 flake_ref="${3:?flake reference required}"
 
-archive="$(podman exec "$container" nix path-info --no-write-lock-file "$flake_ref")"
+nix_env=()
+[[ -n "${NIX_CONFIG:-}" ]] && nix_env+=(--env NIX_CONFIG)
+archive="$(podman exec "${nix_env[@]}" "$container" nix path-info --no-write-lock-file "$flake_ref")"
 [[ "$archive" == /nix/store/* && "$archive" != *$'\n'* && "$archive" == *.tar.gz ]] || {
   echo "Expected one built Nix image archive (.tar.gz), got: $archive" >&2
   exit 1
