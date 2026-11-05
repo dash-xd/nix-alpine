@@ -226,24 +226,26 @@ PLAN_BRANCH ?= main
 PLAN_REV ?=
 PLAN_CHECKOUT ?=
 PLAN_FILE ?=
-PLAN_RUNNER ?=
+PLAN_FLAKE ?=
+PLAN_TARGET ?= qualify-plan
 PLAN_SOURCES ?=
 PLAN_ARTIFACT_MANIFEST ?=
 RETAIN ?= 0
 PLAN_GATE ?= $(GATE)
 qualify-plan:
-	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_REV)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_RUNNER)" || { echo "Set PLAN_REPO, PLAN_REV, PLAN_CHECKOUT, PLAN_FILE, and PLAN_RUNNER" >&2; exit 2; }
+	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_REV)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_FLAKE)" || { echo "Set PLAN_REPO, PLAN_REV, PLAN_CHECKOUT, PLAN_FILE, and PLAN_FLAKE" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(RETAIN)" != 0 && "$(RETAIN)" != 1 ]]; then echo "RETAIN must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_RUNNER="$(PLAN_RUNNER)" PLAN_SOURCES="$(PLAN_SOURCES)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" PLAN_GATE="$(PLAN_GATE)" RETAIN="$(RETAIN)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
+	  bash ./logged-run.sh "$(LOG_DIR)" "$(LOG_NAME)" -- $(MAKE) --no-print-directory qualify-plan LOG=0 PLAN_REPO="$(PLAN_REPO)" PLAN_BRANCH="$(PLAN_BRANCH)" PLAN_REV="$(PLAN_REV)" PLAN_CHECKOUT="$(PLAN_CHECKOUT)" PLAN_FILE="$(PLAN_FILE)" PLAN_FLAKE="$(PLAN_FLAKE)" PLAN_TARGET="$(PLAN_TARGET)" PLAN_SOURCES="$(PLAN_SOURCES)" PLAN_ARTIFACT_MANIFEST="$(PLAN_ARTIFACT_MANIFEST)" PLAN_GATE="$(PLAN_GATE)" RETAIN="$(RETAIN)" SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" WORKSPACES="$(WORKSPACES)"; \
 	else \
 	  $(MAKE) --no-print-directory sync REPO="$(PLAN_REPO)" BRANCH="$(PLAN_BRANCH)" SYNC_NAME="$(PLAN_CHECKOUT)" SYNC_REV="$(PLAN_REV)" WORKSPACES="$(WORKSPACES)"; \
 	  if [[ -n "$(PLAN_REV)" ]]; then git -C "$(WORKSPACES)/$(PLAN_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(PLAN_REV)" >/dev/null || { echo "Plan source revision mismatch" >&2; exit 1; }; fi; \
 	  [[ "$(PLAN_FILE)" != /* && "$(PLAN_FILE)" != *..* ]] || { echo "PLAN_FILE must be relative without traversal" >&2; exit 2; }; \
 	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FILE)" || { echo "Plan file not found: $(PLAN_FILE)" >&2; exit 2; }; \
-	  [[ "$(PLAN_RUNNER)" != /* && "$(PLAN_RUNNER)" != *..* ]] || { echo "PLAN_RUNNER must be relative without traversal" >&2; exit 2; }; \
-	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_RUNNER)" || { echo "Plan entrypoint is missing: $(PLAN_RUNNER)" >&2; exit 2; }; \
+	  [[ "$(PLAN_FLAKE)" != /* && "$(PLAN_FLAKE)" != *..* ]] || { echo "PLAN_FLAKE must be relative without traversal" >&2; exit 2; }; \
+	  [[ "$(PLAN_TARGET)" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "PLAN_TARGET must be a flake app name without #"; exit 2; }; \
+	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FLAKE)/flake.nix" || { echo "Plan flake is missing: $(PLAN_FLAKE)/flake.nix" >&2; exit 2; }; \
 \
 	  if [[ -n "$(PLAN_SOURCES)" ]]; then \
 	    [[ "$(PLAN_SOURCES)" != /* && "$(PLAN_SOURCES)" != *..* ]] || { echo "PLAN_SOURCES must be relative without traversal" >&2; exit 2; }; \
@@ -251,7 +253,7 @@ qualify-plan:
 	    bash ./sync-plan-sources.sh "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_SOURCES)" "$(WORKSPACES)"; \
 	  fi; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_RUNNER)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)" "$(RETAIN)"; \
+	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_FLAKE)" "$(PLAN_TARGET)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)" "$(RETAIN)"; \
 	fi
 
 # Run Go tests in any mounted workspace, without host Go or a repository check output.
