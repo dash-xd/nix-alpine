@@ -44,6 +44,7 @@ done
 [[ "$CONTAINER" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "Invalid container name"
 [[ "$VOLUME" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "Invalid Nix store volume name"
 for f in nix-alpine-store.volume nix-alpine.container; do test -f "$SCRIPT_DIR/quadlet/$f" || die "Missing template $f"; done
+test -x "$SCRIPT_DIR/seed-store-volume.sh" || die "Missing shared-store initializer"
 
 mkdir -p "$WORKSPACES" "$QUADLET_DIR" "$RELEASE_STATE" "$STATE_ROOT"
 RELEASE_STATE="$(realpath "$RELEASE_STATE")"
@@ -77,6 +78,9 @@ log "Installing Quadlets"
 render "$SCRIPT_DIR/quadlet/nix-alpine-store.volume" "$QUADLET_DIR/$VOLUME.volume"
 render "$SCRIPT_DIR/quadlet/nix-alpine.container" "$QUADLET_DIR/$CONTAINER.container"
 systemctl --user daemon-reload
+systemctl --user start "$VOLUME-volume.service"
+log "Merging the image Nix profile into shared store $VOLUME"
+bash "$SCRIPT_DIR/seed-store-volume.sh" "$IMAGE" "$VOLUME"
 systemctl --user restart "$SERVICE"
 log "Trusting mounted workspace Git checkouts inside the toolbox"
 podman exec "$CONTAINER" bash "/workspaces/$NIX_ALPINE_CHECKOUT_PATH/local/trust-workspace-git.sh" /workspaces
