@@ -13,7 +13,7 @@ SOURCE_REV="${8:?source revision required}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
-for cmd in podman systemctl realpath; do
+for cmd in podman systemctl realpath id; do
   command -v "$cmd" >/dev/null || fail "missing host command: $cmd"
 done
 
@@ -58,7 +58,7 @@ podman run --rm --name "$peer" --userns=keep-id:uid=1000,gid=1000 --network=none
 printf 'PASS: a second rootless Podman container used the same Nix store volume (%s)\n' "$VOLUME"
 
 probe="nix.xd-qualify-$RANDOM-$BASHPID"
-podman volume create "$probe" >/dev/null
+podman volume create --uid "$(id -u)" --gid "$(id -g)" "$probe" >/dev/null
 cleanup_probe() { podman volume rm "$probe" >/dev/null 2>&1 || true; }
 trap cleanup_probe EXIT
 bash "$SCRIPT_DIR/seed-store-volume.sh" "$IMAGE" "$probe"
