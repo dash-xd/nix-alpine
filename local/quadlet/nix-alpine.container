@@ -21,6 +21,7 @@ UserNS=keep-id:uid=1000,gid=1000
 NoNewPrivileges=true
 
 [Service]
+TimeoutStartSec=120s
 Restart=always
 RestartSec=5
 
