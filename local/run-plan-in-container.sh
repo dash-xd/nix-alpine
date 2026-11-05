@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-[[ $# == 11 ]] || {
-  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_RUNNER GATE SCOPE ARTIFACT_MANIFEST RETAIN" >&2
+[[ $# == 12 ]] || {
+  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_FLAKE PLAN_TARGET GATE SCOPE ARTIFACT_MANIFEST RETAIN" >&2
   exit 2
 }
-image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 runner=$7 gate=$8 scope=$9
-artifact_manifest=${10:-}
-retain=${11:-0}
+image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 plan_flake=$7 plan_target=$8 gate=$9 scope=${10}
+artifact_manifest=${11:-}
+retain=${12:-}
 [[ "$retain" == 0 || "$retain" == 1 ]] || { echo "RETAIN must be 0 or 1" >&2; exit 2; }
 umask 077
 
@@ -24,7 +24,8 @@ validate_relative_path() {
 }
 validate_relative_path "$checkout" || die "PLAN_CHECKOUT must be a safe workspace-relative path"
 validate_relative_path "$plan_file" || die "PLAN_FILE must be a safe workspace-relative path"
-validate_relative_path "$runner" || die "PLAN_RUNNER must be a safe workspace-relative path"
+validate_relative_path "$plan_flake" || die "PLAN_FLAKE must be a safe workspace-relative path"
+[[ "$plan_target" =~ ^[A-Za-z0-9_.-]+$ ]] || die "PLAN_TARGET must be a flake app name without #"
 
 workspaces=$(realpath "$workspaces")
 nix_alpine_root=$(realpath "$nix_alpine_root")
@@ -34,7 +35,10 @@ checkout_root=$(realpath "$workspaces/$checkout")
 checkout_rel=$(realpath --relative-to="$workspaces" "$checkout_root")
 [[ "$checkout_rel" == "$checkout" ]] || die "Plan checkout resolves outside its declared workspace path"
 [[ -f "$checkout_root/$plan_file" ]] || die "Missing plan: $checkout_root/$plan_file"
-[[ -f "$checkout_root/$runner" ]] || die "Missing plan runner: $checkout_root/$runner"
+plan_flake_root=$(realpath "$checkout_root/$plan_flake")
+plan_flake_rel=$(realpath --relative-to="$checkout_root" "$plan_flake_root")
+[[ "$plan_flake_rel" == "$plan_flake" ]] || die "Plan flake resolves outside its declared checkout path"
+[[ -f "$plan_flake_root/flake.nix" ]] || die "Plan flake is missing: $plan_flake_root/flake.nix"
 manifest_in_container=
 if [[ -n "$artifact_manifest" ]]; then
   artifact_manifest=$(realpath "$artifact_manifest")
@@ -107,6 +111,7 @@ podman_args=(run --rm --name "$task" \
   --env WORKSPACES=/workspaces \
   --env NIX_ALPINE_HOST_WORKSPACES="$workspaces" \
   --env NIX_ALPINE_RETAIN="$retain" \
+  --env NIX_XD_PLAN_ROOT="/workspaces/$checkout" \
   --env TMPDIR="$plan_tmp" \
   --workdir "/workspaces/$checkout")
 if [[ -n "$manifest_in_container" ]]; then
@@ -115,12 +120,10 @@ fi
 if [[ -n "${NIX_CONFIG:-}" ]]; then podman_args+=(--env NIX_CONFIG); fi
 podman_args+=("$image" bash -euc 'unset XDG_RUNTIME_DIR; chmod 700 "$TMPDIR"; bash "/workspaces/$1/local/trust-workspace-git.sh" /workspaces; shift; exec "$@"' -- "$nix_alpine_rel" \
   nix develop --no-write-lock-file "/workspaces/$nix_alpine_rel/toolbox#qualification" \
-  --command bash -euc 'unset XDG_RUNTIME_DIR; systemctl --user show-environment >/dev/null || { echo "ERROR: host user systemd D-Bus is unavailable from Nix-Alpine runtime" >&2; exit 1; }; echo "PASS: host user systemd D-Bus reachable from Nix-Alpine runtime"; exec bash "$@"' -- "/workspaces/$checkout/$runner" \
+  --command bash -euc 'unset XDG_RUNTIME_DIR; systemctl --user show-environment >/dev/null || { echo "ERROR: host user systemd D-Bus is unavailable from Nix-Alpine runtime" >&2; exit 1; }; echo "PASS: host user systemd D-Bus reachable from Nix-Alpine runtime"; exec nix run --no-write-lock-file "$1#$2" -- "${@:3}"' -- \
+  "/workspaces/$checkout/$plan_flake" "$plan_target" \
   --plan "/workspaces/$checkout/$plan_file" --gate "$gate" \
   --workspaces /workspaces --toolbox "$task" \
   --nix-alpine-local "/workspaces/$nix_alpine_rel/local" \
-  --scope "$scope" --agni-checkout "$checkout")
-if [[ -n "$manifest_in_container" ]]; then
-  podman_args+=(--artifact-manifest "$manifest_in_container")
-fi
+  --scope "$scope" --plan-checkout "$checkout")
 podman "${podman_args[@]}"
