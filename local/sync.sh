@@ -51,8 +51,8 @@ if [[ "$actual" != "$expected" && "$actual" != "git@github.com:$repo.git" ]]; th
   echo "Origin mismatch: $actual (expected $repo)" >&2
   exit 1
 fi
-if [[ -n "$(git -C "$path" status --porcelain --untracked-files=no)" ]]; then
-  echo "Tracked local modifications in $path; refusing to overwrite" >&2
+if [[ -n "$(git -C "$path" status --porcelain --untracked-files=all)" ]]; then
+  echo "Local modifications or untracked files in $path; refusing to overwrite" >&2
   exit 1
 fi
 
