@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
 # Cache only OCI/Docker transport archives, never a live Nix store or Podman storage.
 set -Eeuo pipefail
-[[ $# -ge 3 ]] || { echo "usage: $0 export|import DIRECTORY IMAGE..." >&2; exit 2; }
+[[ $# -ge 3 ]] || { echo "usage: $0 export|import DIRECTORY IMAGE...|@IMAGE_FILE" >&2; exit 2; }
 mode=$1 directory=$2; shift 2
 [[ "$mode" == export || "$mode" == import ]] || exit 2
+if (($# == 1)) && [[ "$1" == @* ]]; then
+  image_file=${1#@}
+  [[ -s "$image_file" ]] || { echo "Image list is missing or empty: $image_file" >&2; exit 2; }
+  mapfile -t images < "$image_file"
+else
+  images=("$@")
+fi
+(('${#images[@]}')) || { echo "At least one image is required" >&2; exit 2; }
+for image in "${images[@]}"; do
+  [[ "$image" =~ ^[a-zA-Z0-9_./:-]+$ ]] || { echo "Invalid image ref: $image" >&2; exit 2; }
+done
+image_count=${#images[@]}
 mkdir -p "$directory"
 manifest="$directory/manifest.tsv"
 if [[ "$mode" == export ]]; then
   [[ ! -e "$manifest" ]] || { echo "Refusing to overwrite archive manifest" >&2; exit 2; }
   tmp=$(mktemp "$directory/.manifest.XXXXXXXX")
   trap 'rm -f "$tmp"' EXIT
-  for image in "$@"; do
+  for image in "${images[@]}"; do
     [[ "$image" =~ ^[a-zA-Z0-9_./:-]+$ ]] || { echo "Invalid image ref: $image" >&2; exit 2; }
     id=$(podman image inspect "$image" --format '{{.Id}}')
     id="sha256:${id#sha256:}"
@@ -20,7 +32,7 @@ if [[ "$mode" == export ]]; then
     printf '%s\t%s\t%s\t%s\n' "$image" "$id" "$filename" "$digest" >> "$tmp"
   done
   mv "$tmp" "$manifest"
-  echo "PASS: exported $# immutable image archives"
+  echo "PASS: exported $image_count immutable image archives"
 else
   [[ -s "$manifest" ]] || { echo "Missing archive manifest" >&2; exit 2; }
   for image in "$@"; do
