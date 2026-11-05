@@ -80,7 +80,6 @@ print-config:
 
 help:
 	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
-	@echo "make qualify-coreos-profile COREOS_PROFILE=name COREOS_PROFILE_BRANCH=branch LOG=1 (caller-owned profile, generic QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=compositions/name PLAN_FILE=path GATE=all (generic plan dispatcher)"
@@ -107,7 +106,7 @@ help:
 	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
-	@echo "make compose NAME=fatline WITH=component@version... (Nix app; requires ledger mount; currently fails closed)"
+	@echo "make compose NAME=example WITH=component@version... (Nix app; requires ledger mount)"
 	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
 	@echo "make test-go FLAKE=logma-qualification PACKAGE=./internal/lifecycle (Go via Nix, CGO=0 by default)"
 	@echo "make test-go FLAKE=logma-qualification CGO=1 PACKAGE=./... (Nix Go and GCC)"
@@ -439,7 +438,7 @@ COREOS_QEMU_TIMEOUT ?= 2400
 COREOS_QEMU_RAM_MB ?= 3072
 COREOS_QEMU_CPUS ?= 2
 COREOS_QEMU_ACCEL ?= auto
-COREOS_QEMU_IMAGE ?= localhost/agni-coreos-qemu-runner:44.20261012.3.1
+COREOS_QEMU_IMAGE ?=
 COREOS_QEMU_DISPLAY ?= headless
 COREOS_QEMU_WEB_PORT ?= 8006
 COREOS_QEMU_CONSOLE_LOGIN ?= 0
@@ -464,55 +463,42 @@ COREOS_GUEST_RUNTIME ?= 10m
 COREOS_GUEST_PAYLOAD ?= ./coreos-guest-transient-smoke.sh
 export COREOS_GUEST_SSH_USER
 
-# A qualification profile is owned by its caller (currently Agni). This Make
-# target only stages the selected profile and supervises the generic QEMU host
-# adapter.
-COREOS_PROFILE ?=
-COREOS_PROFILE_BRANCH ?=
-COREOS_PROFILE_REV ?=
-COREOS_PROFILE_CHECKOUT ?= compositions/agni-profile
-COREOS_PROFILE_OUTPUT ?= $(WORKSPACES)/.coreos-profiles/$(COREOS_PROFILE)/$(SCOPE)
-COREOS_PROFILE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/coreos-qemu/$(COREOS_PROFILE)/$(SCOPE)
-COREOS_PROFILE_UNIT ?= coreos-qemu-$(COREOS_PROFILE)-$(SCOPE)
-COREOS_PROFILE_WORKSPACE_FILES ?=
-COREOS_PROFILE_CONSOLE_LOGIN ?=
-export COREOS_PROFILE_WORKSPACE_FILES COREOS_PROFILE_CONSOLE_LOGIN
+# CoreOS profile paths and pins are caller inputs; no application checkout is assumed.
+COREOS_INPUT_REPO ?=
+COREOS_INPUT_BRANCH ?=
+COREOS_INPUT_REV ?=
+COREOS_INPUT_CHECKOUT ?=
+COREOS_BUILD_FLAKE ?=
+COREOS_RUNNER_FLAKE ?= $(COREOS_BUILD_FLAKE)
+COREOS_RUNNER_TARGET ?= $(HASH)qemuRunner
 
-.PHONY: qualify-coreos-qemu qualify-coreos-profile qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
+.PHONY: qualify-coreos-qemu qualify-coreos-guest-transient coreos-qemu-build coreos-qemu-clean coreos-qemu-host-preflight ensure-coreos-state-mount
 qualify-coreos-qemu:
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
-	@if [[ -z "$(COREOS_CONFIG_DIR)" || -z "$(COREOS_RESOURCES)" || -z "$(COREOS_CONFIG_NAME)" || -z "$(COREOS_COMPOSITION_NAME)" ]]; then echo "Set the profile inputs through qualify-coreos-profile or provide COREOS_CONFIG_DIR, COREOS_RESOURCES, COREOS_CONFIG_NAME, and COREOS_COMPOSITION_NAME" >&2; exit 2; fi
+	@if [[ -z "$(COREOS_INPUT_REPO)" || -z "$(COREOS_INPUT_BRANCH)" || -z "$(COREOS_INPUT_REV)" || -z "$(COREOS_INPUT_CHECKOUT)" || -z "$(COREOS_BUILD_FLAKE)" || -z "$(COREOS_CONFIG_DIR)" || -z "$(COREOS_RESOURCES)" || -z "$(COREOS_CONFIG_NAME)" || -z "$(COREOS_COMPOSITION_NAME)" || -z "$(COREOS_QEMU_IMAGE)" ]]; then echo "Set the pinned input repo/branch/revision/checkout, build flake, Butane config/resources, config name, composition name, and runner image" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_DISPLAY)" != headless && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_DISPLAY must be headless or web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" != 0 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN must be 0 or 1" >&2; exit 2; fi
 	@if ! [[ "$(COREOS_COMPOSITION_NAME)" =~ ^[a-z_][a-z0-9_-]{0,18}$$ ]]; then echo "COREOS_COMPOSITION_NAME must be a lowercase system-account prefix of at most 19 characters" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_CONSOLE_LOGIN)" == 1 && "$(COREOS_QEMU_DISPLAY)" != web ]]; then echo "COREOS_QEMU_CONSOLE_LOGIN=1 requires COREOS_QEMU_DISPLAY=web" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_HOLD)" != 0 && "$(COREOS_QEMU_HOLD)" != 1 ]]; then echo "COREOS_QEMU_HOLD must be 0 or 1" >&2; exit 2; fi
 	@if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" != 0 && "$(COREOS_QEMU_TRANSIENT_TESTER)" != 1 ]]; then echo "COREOS_QEMU_TRANSIENT_TESTER must be 0 or 1" >&2; exit 2; fi
-	@if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then \
-	  case "$(COREOS_QEMU_SSH_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_SSH_PORT must be numeric" >&2; exit 2;; esac; \
-	  ssh_port_num=$$((10#$(COREOS_QEMU_SSH_PORT))); \
-	  if (( ssh_port_num < 1024 || ssh_port_num > 65535 )); then echo "COREOS_QEMU_SSH_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
-	fi
-	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 && "$(COREOS_QEMU_TRANSIENT_TESTER)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires a console login or transient tester profile" >&2; exit 2; fi
-	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then \
-	  case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; \
-	  web_port_num=$$((10#$(COREOS_QEMU_WEB_PORT))); \
-	  if (( web_port_num < 1024 || web_port_num > 65535 )); then echo "COREOS_QEMU_WEB_PORT must be between 1024 and 65535" >&2; exit 2; fi; \
-	fi
+	@if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then case "$(COREOS_QEMU_SSH_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_SSH_PORT must be numeric" >&2; exit 2;; esac; fi
+	@if [[ "$(COREOS_QEMU_HOLD)" == 1 && "$(COREOS_QEMU_CONSOLE_LOGIN)" != 1 && "$(COREOS_QEMU_TRANSIENT_TESTER)" != 1 ]]; then echo "COREOS_QEMU_HOLD=1 requires a console login or transient tester" >&2; exit 2; fi
+	@if [[ "$(COREOS_QEMU_DISPLAY)" == web ]]; then case "$(COREOS_QEMU_WEB_PORT)" in ''|*[!0-9]*) echo "COREOS_QEMU_WEB_PORT must be numeric" >&2; exit 2;; esac; fi
 	@if [[ "$(LOG)" == 1 ]]; then \
 	  bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-qemu-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-qemu LOG=0; \
 	else \
 	  set -Eeuo pipefail; \
 	  $(COREOS_MAKE) ensure-coreos-state-mount; \
 	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
-	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COMPOSITION_AGNI_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COMPOSITION_AGNI_CHECKOUT)"; \
-	  git -C "$(WORKSPACES)/$(COMPOSITION_AGNI_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COMPOSITION_AGNI_REV)" >/dev/null || { echo "Agni source does not match pinned QEMU revision $(COMPOSITION_AGNI_REV)" >&2; exit 1; }; \
+	  $(COREOS_MAKE) sync REPO="$(COREOS_INPUT_REPO)" BRANCH="$(COREOS_INPUT_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COREOS_INPUT_CHECKOUT)"; \
+	  git -C "$(WORKSPACES)/$(COREOS_INPUT_CHECKOUT)" rev-parse HEAD | grep -Fx -- "$(COREOS_INPUT_REV)" >/dev/null || { echo "Input source does not match pinned revision $(COREOS_INPUT_REV)" >&2; exit 1; }; \
 	  if [[ "$(COREOS_QEMU_TRANSIENT_TESTER)" == 1 ]]; then \
-	    bash ./coreos-qemu-transient-qualify.sh "$(COREOS_MAKE)" "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_STATE)" "$(COREOS_UNIT)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_COMPOSITION_NAME)"; \
+	    bash ./coreos-qemu-transient-qualify.sh "$(COREOS_MAKE)" "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_RUNNER_FLAKE)" "$(COREOS_RUNNER_TARGET)" "$(COREOS_STATE)" "$(COREOS_UNIT)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_COMPOSITION_NAME)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)"; \
 	  else \
 	    $(COREOS_MAKE) coreos-qemu-build; \
-	    $(COREOS_MAKE) build FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
-	    $(COREOS_MAKE) image-load FLAKE="$(COMPOSITION_AGNI_CHECKOUT)/qemu/coreos-live/local" TARGET='#qemuRunner'; \
+	    $(COREOS_MAKE) build FLAKE="$(COREOS_INPUT_CHECKOUT)/$(COREOS_RUNNER_FLAKE)" TARGET="$(COREOS_RUNNER_TARGET)"; \
+	    $(COREOS_MAKE) image-load FLAKE="$(COREOS_INPUT_CHECKOUT)/$(COREOS_RUNNER_FLAKE)" TARGET="$(COREOS_RUNNER_TARGET)"; \
 	    bash ./coreos-qemu-qualify.sh "$(COREOS_UNIT)" "$(COREOS_STATE)" "$(COREOS_QEMU_TIMEOUT)" "$(COREOS_QEMU_RAM_MB)" "$(COREOS_QEMU_CPUS)" "$(COREOS_QEMU_ACCEL)" "$(COREOS_QEMU_IMAGE)" "$(COREOS_QEMU_DISPLAY)" "$(COREOS_QEMU_WEB_PORT)" "$(COREOS_QEMU_HOLD)" "$(COREOS_QEMU_SSH_PORT)" "$(COREOS_TEST_SSH_PUBLIC_KEY)" "$(COREOS_COMPOSITION_NAME)" "$(COREOS_QEMU_TRANSIENT_TESTER)" "$(COREOS_QEMU_EXPECT_MARKER)"; \
 	  fi; \
 	fi
@@ -523,23 +509,6 @@ qualify-coreos-guest-transient:
 	@if [[ "$(LOG)" == 1 ]]; then bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-guest-transient-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-guest-transient LOG=0; \
 	else bash ./coreos-guest-transient-qualify.sh "$(COREOS_GUEST_HOST)" "$(COREOS_GUEST_PORT)" "$(COREOS_GUEST_KEY)" "$(COREOS_GUEST_COMPOSITION)" "$(COREOS_GUEST_RUNTIME)" "$(COREOS_GUEST_PAYLOAD)"; fi
 
-qualify-coreos-profile:
-	@test -n "$(COREOS_PROFILE)" || { echo "COREOS_PROFILE is required (the profile must exist in the selected Agni checkout)" >&2; exit 2; }
-	@test -n "$(COREOS_PROFILE_BRANCH)" || { echo "COREOS_PROFILE_BRANCH is required" >&2; exit 2; }
-	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
-	@if [[ "$(LOG)" == 1 ]]; then \
-	  bash ./logged-run.sh "$(LOG_DIR)" "qualification-coreos-profile-$(COREOS_PROFILE)-$(SCOPE)" -- $(COREOS_MAKE) --no-print-directory qualify-coreos-profile COREOS_PROFILE="$(COREOS_PROFILE)" LOG=0; \
-	else \
-	  set -Eeuo pipefail; \
-	  $(COREOS_MAKE) ensure-coreos-state-mount; \
-	  $(COREOS_MAKE) coreos-qemu-host-preflight; \
-	  $(COREOS_MAKE) sync REPO=dash-xd/agni BRANCH="$(COREOS_PROFILE_BRANCH)" WORKSPACES="$(WORKSPACES)" SYNC_NAME="$(COREOS_PROFILE_CHECKOUT)"; \
-	  agni_rev="$$(git -C "$(WORKSPACES)/$(COREOS_PROFILE_CHECKOUT)" rev-parse HEAD)"; \
-	  if [[ -n "$(COREOS_PROFILE_REV)" && "$$agni_rev" != "$(COREOS_PROFILE_REV)" ]]; then echo "Agni source does not match requested revision $(COREOS_PROFILE_REV)" >&2; exit 1; fi; \
-	  nix_rev="$$(git -C "$(NIX_ALPINE_ROOT)" rev-parse HEAD)"; \
-	  nix_checkout="$$(realpath --relative-to="$(WORKSPACES)" "$(NIX_ALPINE_ROOT)")"; \
-	  COMPOSITION_AGNI_BRANCH="$(COREOS_PROFILE_BRANCH)" bash ./coreos-profile-qualify.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_PROFILE_CHECKOUT)" "$$agni_rev" "$$nix_checkout" "$$nix_rev" "$(COREOS_PROFILE)" "$(COREOS_PROFILE_OUTPUT)" "$(COREOS_PROFILE_STATE)" "$(COREOS_PROFILE_UNIT)" "$(COREOS_MAKE)" "$(COREOS_PROFILE_CONSOLE_LOGIN)"; \
-	fi
 coreos-qemu-host-preflight:
 	@bash ./coreos-qemu-host-preflight.sh "$(COREOS_QEMU_ACCEL)"
 ensure-coreos-state-mount:
@@ -555,7 +524,7 @@ ensure-coreos-state-mount:
 	  [[ "$$actual" == "$$expected" ]] || { echo "Toolbox is missing the expected CoreOS state mount" >&2; exit 1; }
 coreos-qemu-build:
 	@$(COREOS_MAKE) ensure-coreos-state-mount
-	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COMPOSITION_AGNI_CHECKOUT)" "$(COMPOSITION_AGNI_REV)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
+	@bash ./coreos-qemu-build.sh "$(CONTAINER)" "$(WORKSPACES)" "$(COREOS_INPUT_CHECKOUT)" "$(COREOS_INPUT_REV)" "$(COREOS_BUILD_FLAKE)" "$(COREOS_CONFIG_DIR)" "$(COREOS_RESOURCES)" "$(COREOS_STATE)" "$(COREOS_REUSE)" "$(COREOS_CONFIG_NAME)" "$(COREOS_COMPOSITION_NAME)" "$(NIX_ALPINE_TOOLBOX_FLAKE)" "$(COREOS_STATE_ROOT)"
 coreos-qemu-clean:
 	@systemctl --user stop "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
 	@systemctl --user reset-failed "$(COREOS_UNIT).service" >/dev/null 2>&1 || true
