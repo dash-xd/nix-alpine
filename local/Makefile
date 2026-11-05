@@ -244,7 +244,7 @@ qualify-plan:
 	  [[ "$(PLAN_FILE)" != /* && "$(PLAN_FILE)" != *..* ]] || { echo "PLAN_FILE must be relative without traversal" >&2; exit 2; }; \
 	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FILE)" || { echo "Plan file not found: $(PLAN_FILE)" >&2; exit 2; }; \
 	  [[ "$(PLAN_FLAKE)" != /* && "$(PLAN_FLAKE)" != *..* ]] || { echo "PLAN_FLAKE must be relative without traversal" >&2; exit 2; }; \
-	  [[ "$(PLAN_TARGET)" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "PLAN_TARGET must be a flake app name without #"; exit 2; }; \
+	  case "$(PLAN_TARGET)" in ''|*[!A-Za-z0-9_.-]*) echo "PLAN_TARGET must be a flake app name without #"; exit 2;; esac; \
 	  test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_FLAKE)/flake.nix" || { echo "Plan flake is missing: $(PLAN_FLAKE)/flake.nix" >&2; exit 2; }; \
 \
 	  if [[ -n "$(PLAN_SOURCES)" ]]; then \
