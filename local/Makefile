@@ -22,7 +22,7 @@ TARGET ?=
 ARGS ?=
 CMD ?= bash
 PROJECTS ?=
-COMPONENT ?= logma
+COMPONENT ?=
 NAME ?=
 WITH ?=
 COMPOSITIONS ?= $(WORKSPACES)/.compositions
@@ -32,7 +32,7 @@ RELEASE_IMAGE ?=
 RELEASE_SOURCE ?= $(COMPOSITIONS_ROOT)/$(notdir $(REPO))
 RELEASE_FLAKE ?= $(FLAKE_PATH)
 RELEASE_TARGET ?= $(HASH)provider-image
-# Release qualification selects its mandatory gate pair by COMPONENT in release-qualify.sh.
+RELEASE_GATES ?=
 RELEASE_STATE ?= $(NIX_ALPINE_STATE_ROOT)/releases
 RELEASE_SOURCE_CONTAINER ?= /workspaces/compositions/$(notdir $(REPO))
 RELEASE_METADATA_FLAKE ?= /workspaces/$(NIX_ALPINE_CHECKOUT_PATH)/release
@@ -95,36 +95,36 @@ help:
 	@echo "make qualify-process FLAKE=$(NIX_ALPINE_CHECKOUT_PATH)/release/components/redis (component process gate)"
 	@echo "make release-lock | release-check (Nix inside local builder only)"
 	@echo "make test-release (lightweight host contract; no Nix)"
-	@echo "make release-latest REPO=owner/repo COMPONENT=skymill RELEASE_FLAKE=/workspaces/skymill (auto CalVer + local qualification)"
+	@echo "make release-latest REPO=owner/repo COMPONENT=name RELEASE_FLAKE=/workspaces/checkout (auto CalVer + caller flake qualification)"
 	@echo "make test-release-integration REPO=owner/repo RELEASE_FLAKE=/workspaces/repo RELEASE_VERSION=... (explicit-version integration)"
-	@echo "make version COMPONENT=logma (next available UTC CalVer in local ledger)"
-	@echo "make release-candidate COMPONENT=logma RELEASE_VERSION=... REPO=owner/repo RELEASE_IMAGE=local/image:tag RELEASE_FLAKE=/workspaces/project RELEASE_TARGET='#provider-image'"
-	@echo "make release-qualify COMPONENT=logma RELEASE_VERSION=... (runs mandatory component gates; refuses failed qualification)"
+	@echo "make version COMPONENT=name (next available UTC CalVer in local ledger)"
+	@echo "make release-candidate COMPONENT=name RELEASE_VERSION=... REPO=owner/repo RELEASE_IMAGE=local/image:tag RELEASE_FLAKE=/workspaces/checkout RELEASE_TARGET='#image'"
+	@echo "make release-qualify COMPONENT=name RELEASE_VERSION=... RELEASE_GATES='gate-a gate-b' (runs caller-selected flake gates)"
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
 	@echo "make image-archives IMAGE_ARCHIVE_ACTION=import|export IMAGE_ARCHIVE_DIR=path IMAGE_ARCHIVE_IMAGE_FILE=path (verify/import or export selected image archives)"
 	@echo "make sync REPO=owner/repo BRANCH=branch (clone or fast-forward a workspace repository)"
-	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
-	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
+	@echo "make sync-component REPO=owner/repo BRANCH=branch (refresh a workspace source)"
+	@echo "make qualify-component REPO=owner/repo BRANCH=branch (sync and run caller flake gates)"
 	@echo "make compose NAME=example WITH=component@version... (Nix app; requires ledger mount)"
-	@echo "make test-workspace REPO=xd-dash/skymill BRANCH=branch PACKAGE=./httpapi (via pinned TOOLCHAIN_FLAKE#go devShell)"
-	@echo "make test-go FLAKE=logma-qualification PACKAGE=./internal/lifecycle (Go via Nix, CGO=0 by default)"
-	@echo "make test-go FLAKE=logma-qualification CGO=1 PACKAGE=./... (Nix Go and GCC)"
-	@echo "make test-go-sync REPO=xd-dash/logma BRANCH=branch SYNC_NAME=logma-qualification PACKAGE=./..."
+	@echo "make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./... (via pinned TOOLCHAIN_FLAKE#go devShell)"
+	@echo "make test-go FLAKE=workspace/path PACKAGE=./... (Go via Nix, CGO=0 by default)"
+	@echo "make test-go FLAKE=workspace/path CGO=1 PACKAGE=./... (Nix Go and GCC)"
+	@echo "make test-go-sync REPO=owner/repo BRANCH=branch PACKAGE=./..."
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
 	@echo "make qualify-toolbox LOG=1 (systemd, Nix flake, and shared rootless Nix store smoke)"
 	@echo "make self-update (fast-forward this checkout; no image rebuild)"
 	@echo "make reset-source RESET_DRY_RUN=1 (preview); set DISCARD_TRACKED=1 and/or DISCARD_UNTRACKED=1 to select changes, then RESET_DRY_RUN=0 to apply; DISCARD_IGNORED=1 also removes ignored files"
 	@echo "make test-workspace-race-latest REPO=... BRANCH=... (race detector via Nix)"
-	@echo "make REPO=xd-dash/skymill BRANCH=... (isolated Redis integration)"
+	@echo "make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./..."
 	@echo "make test-workspace-latest REPO=... BRANCH=... PACKAGE=... (self-update, then test)"
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
 	@echo "make bootstrap; make run FLAKE=workspace/path TARGET='#app'; make build FLAKE=workspace/path TARGET='#package'"
-	@echo "make path-info FLAKE=logma TARGET='#provider-image' (show built Nix store path)"
-	@echo "make image-load FLAKE=logma TARGET='#provider-image' (load archive into rootless Podman)"
+	@echo "make path-info FLAKE=workspace/path TARGET='#image' (show built Nix store path)"
+	@echo "make image-load FLAKE=workspace/path TARGET='#image' (load archive into rootless Podman)"
 	@echo "make image-inspect (list rootless Podman image IDs)"
 	@echo "make start|stop|restart|status|logs|shell|show|check|develop|store-info"
 # Fast-forward source without rebuilding or restarting the container.
@@ -200,7 +200,7 @@ compose-qualify:
 # flake's build, baseline and integration qualification gates. Keep the
 # integration gate's exit status; never reinterpret a nonzero result as green.
 qualify-workspace:
-	@test -n "$(REPO)" && test -n "$(FLAKE)" && test "$(FLAKE)" != "." && test -n "$(COMPONENT)" || { echo "Usage: make qualify-workspace REPO=owner/repo BRANCH=branch FLAKE=path COMPONENT=logma"; exit 2; }
+	@test -n "$(REPO)" && test -n "$(FLAKE)" && test "$(FLAKE)" != "." && test -n "$(COMPONENT)" || { echo "Usage: make qualify-workspace REPO=owner/repo BRANCH=branch FLAKE=path COMPONENT=name"; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#advance-pin' ARGS="$(COMPONENT)" SCOPE="$(SCOPE)"
 	@$(MAKE) run FLAKE="$(FLAKE)" TARGET='#build' SCOPE="$(SCOPE)"
@@ -269,7 +269,7 @@ test-go-sync:
 # Run repository Go tests inside Nix-Alpine, never using host Go.
 # The repository is synchronized first; no qualification pins are advanced.
 test-workspace:
-	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./httpapi"; exit 2; }
+	@test -n "$(REPO)" && test -n "$(PACKAGE)" || { echo "Usage: make test-workspace REPO=owner/repo BRANCH=branch PACKAGE=./..."; exit 2; }
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@podman exec -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off go test -count=1 "$(PACKAGE)"
 # Re-enter Make after fast-forward so updated recipes take effect.
@@ -349,8 +349,8 @@ release-candidate:
 	  RELEASE_STATE="$(RELEASE_STATE)" bash ./release-ledger.sh candidate "$(COMPONENT)" "$(RELEASE_VERSION)" "$$metadata" "$$imported"
 
 release-qualify:
-	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required" >&2; exit 2; }
-	@bash ./release-qualify.sh "$(COMPONENT)" "$(RELEASE_VERSION)" "$(CONTAINER)" "$(RELEASE_STATE)"
+	@test -n "$(COMPONENT)" -a -n "$(RELEASE_VERSION)" -a -n "$(RELEASE_GATES)" || { echo "Set COMPONENT, RELEASE_VERSION, and RELEASE_GATES" >&2; exit 2; }
+	@bash ./release-qualify.sh "$(COMPONENT)" "$(RELEASE_VERSION)" "$(CONTAINER)" "$(RELEASE_STATE)" $(RELEASE_GATES)
 
 # Container-side Nix app. Never accesses the host Podman socket.
 release-metadata:
