@@ -84,6 +84,10 @@ QUALIFY_AGNI ?= $(COMPOSITIONS_ROOT)/agni
 FATLINE_FLAKE ?= $(NIX_ALPINE_CHECKOUT_PATH)/release/components/nginx
 # Set FORCE=1 to discard tracked local changes before refreshing.
 FORCE ?= 0
+DISCARD_TRACKED ?= 0
+DISCARD_UNTRACKED ?= 0
+DISCARD_IGNORED ?= 0
+RESET_DRY_RUN ?= 1
 
 # Composition gates dispatch through shell scripts that invoke nested make.
 # Export qualification inputs so every child make uses the caller's scope,
@@ -98,7 +102,7 @@ export COMPOSITION_TIMER_STATE_MODE COMPOSITION_STRICT_READINESS_MODE COMPOSITIO
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
+.PHONY: qualify-plan qualify-composition-skymill-provider qualify-composition-skymill-acl qualify-composition-production-acl test-go test-go-sync qualify qualify-composition-logma-image qualify-composition-acl-isolation qualify-composition-lifecycle-dispatch qualify-composition-baseline qualify-composition-lifecycle-timer-recovery qualify-composition-live-redis-recovery qualify-composition-coordinated-restart qualify-composition-bootstrap-unit qualify-composition-cold-start qualify-composition-all-quadlets qualify-composition-redis-quadlet qualify-composition-quadlet qualify-composition qualify-composition-preflight compose-readiness qualify-process qualify-service compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose fatline-images test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox qualify-composition-redis-crash-baseline qualify-composition-function-reconciliation qualify-composition-lifecycle-crash qualify-composition-strict-readiness
 PRINT_CONFIG ?= CONTAINER
 .PHONY: print-config
 print-config:
@@ -151,6 +155,7 @@ help:
 	@echo "make diagnose-toolbox (inspect Nix shell PATH and Go executable)"
 	@echo "make qualify-toolbox LOG=1 (systemd, Nix flake, and shared rootless Nix store smoke)"
 	@echo "make self-update (fast-forward this checkout; no image rebuild)"
+	@echo "make reset-source RESET_DRY_RUN=1 (preview); set DISCARD_TRACKED=1 and/or DISCARD_UNTRACKED=1 to select changes, then RESET_DRY_RUN=0 to apply; DISCARD_IGNORED=1 also removes ignored files"
 	@echo "make test-workspace-race-latest REPO=... BRANCH=... (race detector via Nix)"
 	@echo "make REPO=xd-dash/skymill BRANCH=... (isolated Redis integration)"
 	@echo "make test-workspace-latest REPO=... BRANCH=... PACKAGE=... (self-update, then test)"
@@ -165,6 +170,15 @@ help:
 # Fast-forward source without rebuilding or restarting the container.
 self-update:
 	@bash ./refresh.sh "$(FORCE)"
+
+# Preview or explicitly reset only this Git checkout; shared state is outside it.
+reset-source:
+	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; fi
+	@if [[ "$(LOG)" == 1 ]]; then \
+	  bash ./logged-run.sh "$(LOG_DIR)" "source-reset-$(NIX_ALPINE_CHECKOUT)-$(SCOPE)" -- $(MAKE) --no-print-directory reset-source LOG=0; \
+	else \
+	  bash ./reset-source.sh "$(DISCARD_TRACKED)" "$(DISCARD_UNTRACKED)" "$(DISCARD_IGNORED)" "$(RESET_DRY_RUN)"; \
+	fi
 
 # Re-enter Make after updating, so the updated Makefile is loaded.
 test-workspace-latest:
