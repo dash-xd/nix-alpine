@@ -79,7 +79,7 @@ print-config:
 	@case "$(PRINT_CONFIG)" in CONTAINER|IMAGE|VOLUME|SERVICE|WORKSPACES|NIX_XD_ROOT|NIX_ALPINE_VERSION|NIX_ALPINE_CHECKOUT_PATH|LOG_DIR) printf '%s\n' "$($(PRINT_CONFIG))";; *) echo "Unsupported PRINT_CONFIG=$(PRINT_CONFIG)" >&2; exit 2;; esac
 
 help:
-	@echo "make qualify-coreos-qemu COREOS_QEMU_TRANSIENT_TESTER=0|1 COREOS_QEMU_DISPLAY=headless|web LOG=1 (FCOS/QEMU; Podman under transient systemd)"
+	@echo "make qualify-coreos-qemu COREOS_INPUT_REPO=owner/repo COREOS_INPUT_BRANCH=branch COREOS_INPUT_REV=sha COREOS_INPUT_CHECKOUT=compositions/name COREOS_BUILD_FLAKE=path COREOS_CONFIG_DIR=path COREOS_RESOURCES=path COREOS_CONFIG_NAME=file.bu COREOS_COMPOSITION_NAME=name COREOS_QEMU_IMAGE=image:tag (generic FCOS/QEMU adapter)"
 	@echo "make coreos-qemu-clean COREOS_UNIT=... COREOS_STATE=... (stop a scoped QEMU unit and discard its overlay)"
 	@echo "make qualify-coreos-guest-transient COREOS_GUEST_HOST=127.0.0.1 COREOS_GUEST_PORT=PORT COREOS_GUEST_KEY=FILE (GCP/IAP tunnel or another SSH endpoint)"
 	@echo "make qualify-plan PLAN_REPO=owner/repo PLAN_BRANCH=branch PLAN_REV=sha PLAN_CHECKOUT=compositions/name PLAN_FILE=path GATE=all (generic plan dispatcher)"
@@ -103,7 +103,7 @@ help:
 	@echo "make show-image-layers (compare build layers, image IDs, and container references)"
 	@echo "make show-images (show active image, tagged image, and normal image inventory)"
 	@echo "make image-prune  (remove only dangling unused images)"
-	@echo "make sync REPO=dash-xd/agni BRANCH=branch (clone or fast-forward a workspace repository)"
+	@echo "make sync REPO=owner/repo BRANCH=branch (clone or fast-forward a workspace repository)"
 	@echo "make sync-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (refresh component source)"
 	@echo "make qualify-component REPO=xd-dash/skymill BRANCH=codex/httpapi-durable-delivery (sync and run both flake gates)"
 	@echo "make compose NAME=example WITH=component@version... (Nix app; requires ledger mount)"
@@ -121,7 +121,7 @@ help:
 	@echo "make refresh   (fetch origin, fast-forward branch, rebuild and restart; FORCE=1 discards tracked edits)"
 	@echo "make update    (alias for refresh)"
 	@echo "make uninstall (remove scope resources)"
-	@echo "make bootstrap; make run FLAKE=agni TARGET='#app'; make build FLAKE=agni TARGET='#package'"
+	@echo "make bootstrap; make run FLAKE=workspace/path TARGET='#app'; make build FLAKE=workspace/path TARGET='#package'"
 	@echo "make path-info FLAKE=logma TARGET='#provider-image' (show built Nix store path)"
 	@echo "make image-load FLAKE=logma TARGET='#provider-image' (load archive into rootless Podman)"
 	@echo "make image-inspect (list rootless Podman image IDs)"
