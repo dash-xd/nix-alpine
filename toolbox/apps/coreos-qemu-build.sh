@@ -2,35 +2,44 @@
 set -Eeuo pipefail
 export LC_ALL=C
 
-workspace_root="$(realpath "${1:?workspace root required}")"
-agni_checkout="${2:?Agni checkout required}"
-agni_rev="${3:?Agni revision required}"
-config_dir="$(realpath "${4:?Butane config directory required}")"
-resources_dir="$(realpath "${5:?Butane resources directory required}")"
-state="$(realpath -m "${6:?CoreOS state directory required}")"
-reuse="${7:-1}"
-config_name="${8:-profile.bu}"
-composition_name="${9:-guest}"
-agni_dir="$(realpath "$workspace_root/$agni_checkout")"
+workspace_root="$(realpath "$1")"
+input_checkout="$2"
+input_rev="$3"
+build_flake="$4"
+build_target="$5"
+config_dir="$(realpath "$6")"
+resources_dir="$(realpath "$7")"
+state="$(realpath -m "$8")"
+reuse="$9"
+config_name="${10}"
+composition_name="${11}"
+input_root="$(realpath "$workspace_root/$input_checkout")"
+flake_dir="$(realpath "$input_root/$build_flake")"
 builder_id="$(realpath "$0")"
 
-for path in "$agni_dir" "$config_dir" "$resources_dir"; do
-  [[ "$path/" == "$workspace_root/"* ]] || {
-    echo "Build input must remain under $workspace_root: $path" >&2
-    exit 2
-  }
+valid_relative() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ ]] &&
+    [[ "$value" != . && "/$value/" != *"/../"* && "/$value/" != *"/.git/"* ]]
+}
+valid_relative "$input_checkout" || { echo "Invalid input checkout path" >&2; exit 2; }
+valid_relative "$build_flake" || { echo "Invalid build flake path" >&2; exit 2; }
+[[ "$build_target" =~ ^#[A-Za-z0-9_.-]+$ ]] || { echo "Invalid CoreOS build target" >&2; exit 2; }
+for path in "$input_root" "$flake_dir" "$config_dir" "$resources_dir"; do
+  [[ "$path/" == "$workspace_root/"* ]] || { echo "Build input escapes $workspace_root: $path" >&2; exit 2; }
 done
-[[ "$agni_rev" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid pinned Agni revision" >&2; exit 2; }
+[[ "$(git -C "$input_root" rev-parse HEAD)" == "$input_rev" ]] || { echo "Input checkout does not match pinned revision $input_rev" >&2; exit 1; }
+[[ -f "$flake_dir/flake.nix" ]] || { echo "Build flake is missing: $flake_dir" >&2; exit 2; }
+[[ "$input_rev" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid pinned input revision" >&2; exit 2; }
 [[ "$config_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.bu$ ]] || { echo "Invalid Butane config name" >&2; exit 2; }
 [[ "$composition_name" =~ ^[a-z_][a-z0-9_-]{0,18}$ ]] || { echo "Invalid composition account prefix" >&2; exit 2; }
 [[ "$reuse" == 0 || "$reuse" == 1 ]] || { echo "COREOS_REUSE must be 0 or 1" >&2; exit 2; }
-[[ "$(git -C "$agni_dir" rev-parse HEAD)" == "$agni_rev" ]] || { echo "Agni checkout does not match pinned revision $agni_rev" >&2; exit 1; }
 test -f "$config_dir/$config_name" && test -d "$resources_dir" || { echo "Butane inputs are incomplete" >&2; exit 2; }
 mkdir -p "$state"
 
 hash_inputs() {
   {
-    printf 'agni=%s\nconfig=%s\ncomposition=%s\nbuilder=%s\n' "$agni_rev" "$config_name" "$composition_name" "$builder_id"
+    printf 'source=%s\nflake=%s/%s\ntarget=%s\nconfig=%s\ncomposition=%s\nbuilder=%s\n' "$input_rev" "$input_checkout" "$build_flake" "$build_target" "$config_name" "$composition_name" "$builder_id"
     printf 'ssh-key=%s\n' "$(printf '%s' "${COREOS_TEST_SSH_PUBLIC_KEY:-}" | sha256sum | awk '{print $1}')"
     for path in "$config_dir" "$resources_dir"; do
       [[ -z "$(find "$path" -type l -print -quit)" ]] || { echo "Symlinks are not allowed in Butane inputs: $path" >&2; return 2; }
@@ -51,14 +60,15 @@ build_log="$state/nix-build.log"
 : > "$build_log"
 build_env=(env "COREOS_CONFIG_DIR=$config_dir" "COREOS_CONFIG_NAME=$config_name" \
   "COREOS_RESOURCES_DIR=$resources_dir" "COREOS_COMPOSITION_NAME=$composition_name")
-[[ -z "${COREOS_TEST_SSH_PUBLIC_KEY:-}" ]] || build_env+=("COREOS_TEST_SSH_PUBLIC_KEY=$COREOS_TEST_SSH_PUBLIC_KEY")
-if ! output="$("${build_env[@]}" nix build -L --impure --no-write-lock-file --no-link --print-out-paths "$agni_dir/qemu/coreos-live/local#bootstrap" 2>"$build_log")"; then
+if [[ -n "${COREOS_TEST_SSH_PUBLIC_KEY:-}" ]]; then build_env+=("COREOS_TEST_SSH_PUBLIC_KEY=$COREOS_TEST_SSH_PUBLIC_KEY"); fi
+flake_ref="$flake_dir$build_target"
+if ! output="$("${build_env[@]}" nix build -L --impure --no-write-lock-file --no-link --print-out-paths "$flake_ref" 2>"$build_log")"; then
   cat "$build_log" >&2
   printf '%s\n' "$output" >&2
   exit 1
 fi
 cat "$build_log"
-[[ "$output" =~ ^/nix/store/[a-z0-9]{32}-agni-coreos-qemu-bootstrap-[^[:space:]]+$ ]] || {
+[[ "$output" =~ ^/nix/store/[a-z0-9]{32}-[^[:space:]]+$ && -d "$output" ]] || {
   echo "Unexpected Nix artifact path output: $output" >&2
   exit 1
 }
@@ -72,7 +82,7 @@ cleanup_staging() {
 trap cleanup_staging EXIT
 cp -a "$output/." "$staging/"
 chmod u+w "$staging"
-test -s "$staging/base.qcow2" && test -s "$staging/config.ign" || { echo "Nix artifact bundle is incomplete" >&2; exit 1; }
+test -s "$staging/base.qcow2" && test -s "$staging/config.ign" || { echo "Nix artifact bundle must provide base.qcow2 and config.ign" >&2; exit 1; }
 (cd "$staging" && sha256sum base.qcow2 config.ign > artifacts.sha256)
 printf '%s\n' "$build_key" > "$staging/build-key"
 for artifact in base.qcow2 config.ign artifacts.sha256 build-key; do
@@ -80,4 +90,4 @@ for artifact in base.qcow2 config.ign artifacts.sha256 build-key; do
 done
 cleanup_staging
 staging=""
-echo "PASS: pinned FCOS disk and workspace-composed Ignition artifact built inside Nix-Alpine at $state"
+echo "PASS: pinned CoreOS disk and workspace-composed Ignition artifact built inside Nix-Alpine at $state"
