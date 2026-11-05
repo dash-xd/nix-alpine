@@ -27,7 +27,7 @@ QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 log() { printf '\n==> %s\n' "$*"; }
-for cmd in git podman systemctl realpath; do command -v "$cmd" >/dev/null || die "Missing: $cmd"; done
+for cmd in git podman systemctl realpath id; do command -v "$cmd" >/dev/null || die "Missing: $cmd"; done
 [[ "$SCOPE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "Invalid scope"
 NIX_ALPINE_ROOT=$(realpath "$NIX_ALPINE_ROOT")
 WORKSPACES=$(realpath -m "$WORKSPACES")
@@ -69,6 +69,8 @@ render() {
   content="${content//@IMAGE@/$IMAGE}"
   content="${content//@CONTAINER@/$CONTAINER}"
   content="${content//@VOLUME@/$VOLUME}"
+  content="${content//@HOST_UID@/$(id -u)}"
+  content="${content//@HOST_GID@/$(id -g)}"
   content="${content//@WORKSPACES@/$WORKSPACES}"
   content="${content//@RELEASE_STATE@/$RELEASE_STATE}"
   content="${content//@STATE_ROOT@/$STATE_ROOT}"
