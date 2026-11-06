@@ -24,6 +24,29 @@ IMAGE="${IMAGE:-localhost/nix.xd:$NIX_ALPINE_VERSION}"
 RELEASE_STATE="${RELEASE_STATE:-$NIX_ALPINE_STATE_ROOT/releases}"
 STATE_ROOT="${STATE_ROOT:-$NIX_ALPINE_STATE_ROOT/coreos-qemu}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+WORKSPACE_ACCESS="${NIX_ALPINE_WORKSPACE_ACCESS:-rw}"
+AGE_IDENTITY_SOURCE="${NIX_ALPINE_SOPS_AGE_SOURCE:-}"
+[[ "$WORKSPACE_ACCESS" == rw || "$WORKSPACE_ACCESS" == ro ]] || die "Invalid workspace access"
+SOPS_AGE_VOLUME=""
+SOPS_AGE_ENV=""
+if [[ -n "$AGE_IDENTITY_SOURCE" ]]; then
+  [[ -f "$AGE_IDENTITY_SOURCE" && ! -L "$AGE_IDENTITY_SOURCE" ]] ||
+    die "Age identity must be a regular non-symlink file"
+  AGE_IDENTITY_SOURCE="$(realpath "$AGE_IDENTITY_SOURCE")"
+  [[ "$AGE_IDENTITY_SOURCE" != "$NIX_XD_ROOT/"* ]] ||
+    die "Age identity must live outside the shared workspace"
+  SOPS_AGE_VOLUME="Volume=$AGE_IDENTITY_SOURCE:/run/secrets/age/keys.txt:ro"
+  SOPS_AGE_ENV="Environment=SOPS_AGE_KEY_FILE=/run/secrets/age/keys.txt"
+fi
+if [[ "$WORKSPACE_ACCESS" == rw ]]; then
+  GO_MOD_CACHE=/workspaces/.cache/go/mod
+  GO_BUILD_CACHE=/workspaces/.cache/go/build
+  XDG_CACHE_DIR=/workspaces/.cache/xdg
+else
+  GO_MOD_CACHE=/home/nixuser/go/pkg/mod
+  GO_BUILD_CACHE=/home/nixuser/.cache/go-build
+  XDG_CACHE_DIR=/home/nixuser/.cache
+fi
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 log() { printf '\n==> %s\n' "$*"; }
@@ -48,6 +71,9 @@ test -f "$SCRIPT_DIR/seed-store-volume.sh" || die "Missing shared-store initiali
 test -f "$SCRIPT_DIR/prepare-store-volume.sh" || die "Missing shared-store ownership initializer"
 
 mkdir -p "$WORKSPACES" "$QUADLET_DIR" "$RELEASE_STATE" "$STATE_ROOT"
+if [[ "$WORKSPACE_ACCESS" == rw ]]; then
+  mkdir -p "$WORKSPACES/.cache/go/mod" "$WORKSPACES/.cache/go/build" "$WORKSPACES/.cache/xdg"
+fi
 RELEASE_STATE="$(realpath "$RELEASE_STATE")"
 STATE_ROOT="$(realpath "$STATE_ROOT")"
 WORKSPACES="$(realpath "$WORKSPACES")"
@@ -71,6 +97,12 @@ render() {
   content="${content//@CONTAINER@/$CONTAINER}"
   content="${content//@VOLUME@/$VOLUME}"
   content="${content//@WORKSPACES@/$WORKSPACES}"
+  content="${content//@WORKSPACE_ACCESS@/$WORKSPACE_ACCESS}"
+  content="${content//@GO_MOD_CACHE@/$GO_MOD_CACHE}"
+  content="${content//@GO_BUILD_CACHE@/$GO_BUILD_CACHE}"
+  content="${content//@XDG_CACHE_DIR@/$XDG_CACHE_DIR}"
+  content="${content//@SOPS_AGE_VOLUME@/$SOPS_AGE_VOLUME}"
+  content="${content//@SOPS_AGE_ENV@/$SOPS_AGE_ENV}"
   content="${content//@RELEASE_STATE@/$RELEASE_STATE}"
   content="${content//@STATE_ROOT@/$STATE_ROOT}"
   printf '%s\n' "$content" > "$2"
@@ -89,6 +121,9 @@ log "Trusting mounted workspace Git checkouts inside the toolbox"
 podman exec "$CONTAINER" bash "/workspaces/$NIX_ALPINE_CHECKOUT_PATH/local/trust-workspace-git.sh" /workspaces
 log "Verifying Nix"
 podman exec "$CONTAINER" nix --version
+if [[ -n "$AGE_IDENTITY_SOURCE" ]]; then
+  podman exec "$CONTAINER" test -r /run/secrets/age/keys.txt || die "Age identity read-only mount unavailable"
+fi
 cat <<EOF
 Source: $NIX_ALPINE_VERSION ($NIX_ALPINE_SOURCE_REV)
 Image: $IMAGE
