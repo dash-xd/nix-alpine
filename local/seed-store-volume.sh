@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PASS_MARKER="PASS: image Nix profile closure seeded into shared store"
 
 if [[ "${1:-}" == --inside ]]; then
@@ -20,6 +19,7 @@ if [[ "${1:-}" == --inside ]]; then
   exit 0
 fi
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${1:?image required}"
 VOLUME="${2:?shared volume required}"
 command -v podman >/dev/null || { echo "Missing host command: podman" >&2; exit 2; }
