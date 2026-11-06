@@ -12,7 +12,7 @@ Label=io.nix-alpine.workspace=@WORKSPACE_KEY@
 Label=io.nix-alpine.scope=@SCOPE@
 Volume=@VOLUME@:/nix:nocopy
 Volume=@WORKSPACES@:/workspaces:@WORKSPACE_ACCESS@
-@SOPS_AGE_VOLUME@
+@AGE_VOLUME_LINE@
 Volume=@STATE_ROOT@:/run/nix-alpine/coreos-qemu:rw
 Volume=@RELEASE_STATE@:/run/nix-alpine/releases:ro
 WorkingDir=/workspaces
@@ -20,7 +20,7 @@ Environment=HOME=/home/nixuser
 Environment=GOMODCACHE=@GO_MOD_CACHE@
 Environment=GOCACHE=@GO_BUILD_CACHE@
 Environment=XDG_CACHE_HOME=@XDG_CACHE_DIR@
-@SOPS_AGE_ENV@
+@AGE_ENV_LINE@
 Exec=sleep infinity
 UserNS=keep-id:uid=1000,gid=1000
 NoNewPrivileges=true
