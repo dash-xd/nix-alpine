@@ -3,5 +3,3 @@ Description=Nix-Alpine scoped store (@SCOPE@)
 
 [Volume]
 VolumeName=@VOLUME@
-User=1000
-Group=1000
