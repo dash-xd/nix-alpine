@@ -26,19 +26,18 @@ STATE_ROOT="${STATE_ROOT:-$NIX_ALPINE_STATE_ROOT/coreos-qemu}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 die() { echo "ERROR: $*" >&2; exit 1; }
 WORKSPACE_ACCESS="${NIX_ALPINE_WORKSPACE_ACCESS:-rw}"
-AGE_IDENTITY_SOURCE="${NIX_ALPINE_SOPS_AGE_SOURCE:-}"
+AGE_VOLUME="${NIX_ALPINE_AGE_VOLUME:-}"
+AGE_ACCESS="${NIX_ALPINE_AGE_ACCESS:-ro}"
 [[ "$WORKSPACE_ACCESS" == rw || "$WORKSPACE_ACCESS" == ro ]] || die "Invalid workspace access"
-SOPS_AGE_VOLUME=""
-SOPS_AGE_ENV=""
-if [[ -n "$AGE_IDENTITY_SOURCE" ]]; then
-  [[ -f "$AGE_IDENTITY_SOURCE" && ! -L "$AGE_IDENTITY_SOURCE" ]] ||
-    die "Age identity must be a regular non-symlink file"
-  AGE_IDENTITY_SOURCE="$(realpath "$AGE_IDENTITY_SOURCE")"
-  [[ "$AGE_IDENTITY_SOURCE" != "$NIX_XD_ROOT/"* ]] ||
-    die "Age identity must live outside the shared workspace"
-  SOPS_AGE_VOLUME="Volume=$AGE_IDENTITY_SOURCE:/run/secrets/age/keys.txt:ro"
-  SOPS_AGE_ENV="Environment=SOPS_AGE_KEY_FILE=/run/secrets/age/keys.txt"
+AGE_VOLUME_LINE=""
+AGE_ENV_LINE=""
+if [[ -n "$AGE_VOLUME" ]]; then
+  [[ "$AGE_VOLUME" =~ ^[a-z][a-z0-9-]{0,62}$ ]] || die "Invalid age volume name"
+  [[ "$AGE_ACCESS" == ro || "$AGE_ACCESS" == rw ]] || die "Invalid age volume access"
+  AGE_VOLUME_LINE="Volume=$AGE_VOLUME:/run/secrets/age:$AGE_ACCESS"
+  AGE_ENV_LINE="Environment=SOPS_AGE_KEY_FILE=/run/secrets/age/keys.txt"
 fi
+
 if [[ "$WORKSPACE_ACCESS" == rw ]]; then
   GO_MOD_CACHE=/workspaces/.cache/go/mod
   GO_BUILD_CACHE=/workspaces/.cache/go/build
@@ -102,12 +101,23 @@ render() {
   content="${content//@GO_MOD_CACHE@/$GO_MOD_CACHE}"
   content="${content//@GO_BUILD_CACHE@/$GO_BUILD_CACHE}"
   content="${content//@XDG_CACHE_DIR@/$XDG_CACHE_DIR}"
-  content="${content//@SOPS_AGE_VOLUME@/$SOPS_AGE_VOLUME}"
-  content="${content//@SOPS_AGE_ENV@/$SOPS_AGE_ENV}"
+  content="${content//@AGE_VOLUME_LINE@/$AGE_VOLUME_LINE}"
+  content="${content//@AGE_ENV_LINE@/$AGE_ENV_LINE}"
   content="${content//@RELEASE_STATE@/$RELEASE_STATE}"
   content="${content//@STATE_ROOT@/$STATE_ROOT}"
   printf '%s\n' "$content" > "$2"
 }
+if [[ -n "$AGE_VOLUME" ]]; then
+  if [[ "$AGE_ACCESS" == rw ]]; then
+    podman volume exists "$AGE_VOLUME" || podman volume create "$AGE_VOLUME" >/dev/null
+    # The scoped bootstrap runner prepares its own volume once, without
+    # touching existing identities or the unrelated Nix store.
+    podman run --rm --user 0 -v "$AGE_VOLUME:/run/secrets/age:rw" "$IMAGE" \
+      chown 1000:1000 /run/secrets/age
+  else
+    podman volume exists "$AGE_VOLUME" || die "Reader requested a nonexistent age identity volume"
+  fi
+fi
 log "Installing Quadlets"
 render "$SCRIPT_DIR/quadlet/nix-alpine-store.volume" "$QUADLET_DIR/$VOLUME.volume"
 render "$SCRIPT_DIR/quadlet/nix-alpine.container" "$QUADLET_DIR/$CONTAINER.container"
@@ -122,8 +132,16 @@ log "Trusting mounted workspace Git checkouts inside the toolbox"
 podman exec "$CONTAINER" bash "/workspaces/$NIX_ALPINE_CHECKOUT_PATH/local/trust-workspace-git.sh" /workspaces
 log "Verifying Nix"
 podman exec "$CONTAINER" nix --version
-if [[ -n "$AGE_IDENTITY_SOURCE" ]]; then
-  podman exec "$CONTAINER" test -r /run/secrets/age/keys.txt || die "Age identity read-only mount unavailable"
+if [[ -n "$AGE_VOLUME" ]]; then
+  if [[ "$AGE_ACCESS" == rw ]]; then
+    log "Ensuring bootstrap-owned age identity (no private-key output)"
+    podman exec "$CONTAINER" nix develop \
+      /workspaces/$NIX_ALPINE_CHECKOUT_PATH/toolbox#security -c \
+      bash "/workspaces/$NIX_ALPINE_CHECKOUT_PATH/local/ensure-age-identity.sh"
+  else
+    podman exec "$CONTAINER" test -r /run/secrets/age/keys.txt ||
+      die "Age identity not available to reader scope"
+  fi
 fi
 cat <<EOF
 Source: $NIX_ALPINE_VERSION ($NIX_ALPINE_SOURCE_REV)
