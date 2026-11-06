@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PASS_MARKER="PASS: image Nix profile closure seeded into shared store"
 
 if [[ "${1:-}" == --inside ]]; then
   [[ -w /shared/nix ]] || { echo "Shared Nix volume is not writable by the mapped toolbox user" >&2; exit 1; }
@@ -11,14 +12,11 @@ if [[ "${1:-}" == --inside ]]; then
     exit 1
   }
 
-  echo "Merging the image Nix profile closure into the shared store"
+  echo "Merging image profile closure into the existing shared Nix store"
   nix copy --to "local?root=/shared" "$profile"
-
-  profile_dir="/shared/nix/var/nix/profiles/per-user/$USER"
-  mkdir -p "$profile_dir"
-  ln -sfn "$profile" "$profile_dir/profile"
   test -e "/shared/nix/store/${profile#/nix/store/}"
-  echo "PASS: current Nix profile closure is registered in the shared store"
+  nix path-info --store "local?root=/shared" "$profile" >/dev/null
+  echo "$PASS_MARKER"
   exit 0
 fi
 
@@ -26,7 +24,14 @@ IMAGE="${1:?image required}"
 VOLUME="${2:?shared volume required}"
 command -v podman >/dev/null || { echo "Missing host command: podman" >&2; exit 2; }
 
-podman run --rm --network=none \
-  --userns=keep-id:uid=1000,gid=1000 \
-  --volume "$VOLUME:/shared/nix" \
-  "$IMAGE" /bin/bash -s -- --inside < "$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
+output="$(
+  podman run --interactive --rm --network=none \
+    --userns=keep-id:uid=1000,gid=1000 \
+    --volume "$VOLUME:/shared/nix:nocopy" \
+    "$IMAGE" /bin/bash -s -- --inside < "$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
+)"
+printf '%s\n' "$output"
+grep -Fxq "$PASS_MARKER" <<<"$output" || {
+  echo "Shared Nix store seeding did not emit its success marker" >&2
+  exit 1
+}
