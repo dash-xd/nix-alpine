@@ -13,7 +13,7 @@ SOURCE_REV="${8:?source revision required}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
-for cmd in podman systemctl realpath id; do
+for cmd in podman systemctl realpath; do
   command -v "$cmd" >/dev/null || fail "missing host command: $cmd"
 done
 
