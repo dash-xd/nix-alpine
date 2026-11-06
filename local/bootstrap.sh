@@ -44,7 +44,7 @@ done
 [[ "$CONTAINER" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "Invalid container name"
 [[ "$VOLUME" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || die "Invalid Nix store volume name"
 for f in nix-alpine-store.volume nix-alpine.container; do test -f "$SCRIPT_DIR/quadlet/$f" || die "Missing template $f"; done
-test -x "$SCRIPT_DIR/seed-store-volume.sh" || die "Missing shared-store initializer"
+test -f "$SCRIPT_DIR/seed-store-volume.sh" || die "Missing shared-store initializer"
 
 mkdir -p "$WORKSPACES" "$QUADLET_DIR" "$RELEASE_STATE" "$STATE_ROOT"
 RELEASE_STATE="$(realpath "$RELEASE_STATE")"
