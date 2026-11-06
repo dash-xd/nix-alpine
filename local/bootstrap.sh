@@ -34,7 +34,7 @@ AGE_ENV_LINE=""
 if [[ -n "$AGE_VOLUME" ]]; then
   [[ "$AGE_VOLUME" =~ ^[a-z][a-z0-9-]{0,62}$ ]] || die "Invalid age volume name"
   [[ "$AGE_ACCESS" == ro || "$AGE_ACCESS" == rw ]] || die "Invalid age volume access"
-  AGE_VOLUME_LINE="Volume=$AGE_VOLUME:/run/secrets/age:$AGE_ACCESS"
+  AGE_VOLUME_LINE="Volume=$AGE_VOLUME:/run/secrets/age:$AGE_ACCESS,nocopy"
   AGE_ENV_LINE="Environment=SOPS_AGE_KEY_FILE=/run/secrets/age/keys.txt"
 fi
 
