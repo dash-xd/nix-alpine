@@ -75,11 +75,14 @@ export GATE LOG LOG_DIR LOG_NAME
 FLAKE_PATH := $(if $(filter .,$(FLAKE)),/workspaces,$(if $(filter /workspaces%,$(FLAKE)),$(FLAKE),/workspaces/$(FLAKE)))
 FLAKE_REF := $(FLAKE_PATH)$(TARGET)
 
-.PHONY: qualify-plan test-go vet-go test-go-sync compose-readiness compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
+.PHONY: assert-workspace-root inventory-checkouts qualify-plan test-go vet-go test-go-sync compose-readiness compose-show compose-check compose-qualify qualify-component sync-component release-latest release-lock release-check test-release-integration release-inspect test-release release-import release-metadata version release-candidate release-qualify compose test-workspace-race test-workspace-race-latest self-update reset-source test-workspace-latest diagnose-toolbox test-workspace qualify-workspace uninstall help bootstrap refresh update sync show-images show-image-layers images image-prune start stop restart status logs shell exec run build path-info image-load image-inspect develop show check ps inspect store store-info parallel-build print-config qualify-toolbox image-archives
 PRINT_CONFIG ?= CONTAINER
 .PHONY: print-config
 print-config:
 	@case "$(PRINT_CONFIG)" in CONTAINER|IMAGE|VOLUME|SERVICE|WORKSPACES|NIX_XD_ROOT|NIX_ALPINE_VERSION|NIX_ALPINE_CHECKOUT_PATH|LOG_DIR) printf '%s\n' "$($(PRINT_CONFIG))";; *) echo "Unsupported PRINT_CONFIG=$(PRINT_CONFIG)" >&2; exit 2;; esac
+
+assert-workspace-root:
+	@bash ./assert-workspace-root.sh "$(NIX_XD_ROOT)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)"
 
 help:
 	@echo "make qualify-coreos-qemu COREOS_INPUT_REPO=owner/repo COREOS_INPUT_BRANCH=branch COREOS_INPUT_REV=sha COREOS_INPUT_CHECKOUT=compositions/name COREOS_BUILD_FLAKE=path COREOS_CONFIG_DIR=path COREOS_RESOURCES=path COREOS_CONFIG_NAME=file.bu COREOS_COMPOSITION_NAME=name COREOS_QEMU_IMAGE=image:tag (generic FCOS/QEMU adapter)"
@@ -165,9 +168,9 @@ image-archives:
 	@test "$(IMAGE_ARCHIVE_ACTION)" = import -o "$(IMAGE_ARCHIVE_ACTION)" = export || { echo "IMAGE_ARCHIVE_ACTION must be import or export" >&2; exit 2; }
 	@test -n "$(IMAGE_ARCHIVE_DIR)" -a -s "$(IMAGE_ARCHIVE_IMAGE_FILE)" || { echo "Set IMAGE_ARCHIVE_DIR and IMAGE_ARCHIVE_IMAGE_FILE" >&2; exit 2; }
 	@bash ./ci-image-archives.sh "$(IMAGE_ARCHIVE_ACTION)" "$(IMAGE_ARCHIVE_DIR)" "@$(IMAGE_ARCHIVE_IMAGE_FILE)"
-sync:
+sync: assert-workspace-root
 	@test -n "$(REPO)" || { echo "Usage: make sync REPO=owner/repo BRANCH=branch"; exit 2; }
-	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)" "$(SYNC_REV)"
+	@bash ./sync.sh "$(REPO)" "$(BRANCH)" "$(WORKSPACES)" "$(SYNC_NAME)" "$(SYNC_REV)" "$(NIX_XD_ROOT)"
 # Refresh a component without rebuilding images or modifying release records.
 sync-component:
 	@test -n "$(REPO)" || { echo "REPO required" >&2; exit 2; }
@@ -232,7 +235,7 @@ PLAN_SOURCES ?=
 PLAN_ARTIFACT_MANIFEST ?=
 RETAIN ?= 0
 PLAN_GATE ?= $(GATE)
-qualify-plan:
+qualify-plan: assert-workspace-root
 	@test -n "$(PLAN_REPO)" -a -n "$(PLAN_REV)" -a -n "$(PLAN_CHECKOUT)" -a -n "$(PLAN_FILE)" -a -n "$(PLAN_FLAKE)" || { echo "Set PLAN_REPO, PLAN_REV, PLAN_CHECKOUT, PLAN_FILE, and PLAN_FLAKE" >&2; exit 2; }
 	@if [[ "$(LOG)" != 0 && "$(LOG)" != 1 ]]; then echo "LOG must be 0 or 1" >&2; exit 2; \
 	elif [[ "$(RETAIN)" != 0 && "$(RETAIN)" != 1 ]]; then echo "RETAIN must be 0 or 1" >&2; exit 2; \
@@ -250,10 +253,10 @@ qualify-plan:
 	  if [[ -n "$(PLAN_SOURCES)" ]]; then \
 	    [[ "$(PLAN_SOURCES)" != /* && "$(PLAN_SOURCES)" != *..* ]] || { echo "PLAN_SOURCES must be relative without traversal" >&2; exit 2; }; \
 	    test -f "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_SOURCES)" || { echo "Plan source manifest is missing: $(PLAN_SOURCES)" >&2; exit 2; }; \
-	    bash ./sync-plan-sources.sh "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_SOURCES)" "$(WORKSPACES)"; \
+	    bash ./sync-plan-sources.sh "$(WORKSPACES)/$(PLAN_CHECKOUT)/$(PLAN_SOURCES)" "$(WORKSPACES)" "$(NIX_XD_ROOT)"; \
 	  fi; \
 	  if ! podman container exists "$(CONTAINER)" || [[ "$$(systemctl --user is-active "$(SERVICE)" 2>/dev/null || true)" != active ]]; then $(MAKE) --no-print-directory bootstrap SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)"; fi; \
-	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_FLAKE)" "$(PLAN_TARGET)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)" "$(RETAIN)"; \
+	  bash ./run-plan-in-container.sh "$(IMAGE)" "$(VOLUME)" "$(WORKSPACES)" "$(NIX_ALPINE_ROOT)" "$(PLAN_CHECKOUT)" "$(PLAN_FILE)" "$(PLAN_FLAKE)" "$(PLAN_TARGET)" "$(PLAN_GATE)" "$(SCOPE)" "$(PLAN_ARTIFACT_MANIFEST)" "$(RETAIN)" "$(NIX_XD_ROOT)"; \
 	fi
 
 # Run Go tests in any mounted workspace, without host Go or a repository check output.
@@ -293,7 +296,7 @@ test-workspace-race:
 	@$(MAKE) sync REPO="$(REPO)" BRANCH="$(BRANCH)" WORKSPACES="$(WORKSPACES)"
 	@podman exec $(NIX_EXEC_ARGS) -w "/workspaces/$(SYNC_NAME)" "$(CONTAINER)" nix develop "/workspaces/$(TOOLCHAIN_FLAKE)#$(TOOLCHAIN_SHELL)" -c env GOWORK=off CGO_ENABLED=1 go test -race -count=1 "$(PACKAGE)"
 
-bootstrap:
+bootstrap: assert-workspace-root
 	SCOPE="$(SCOPE)" WORKSPACES="$(WORKSPACES)" WORKSPACE_KEY="$(WORKSPACE_KEY)" NIX_ALPINE_ROOT="$(NIX_ALPINE_ROOT)" NIX_ALPINE_CHECKOUT_PATH="$(NIX_ALPINE_CHECKOUT_PATH)" NIX_ALPINE_CHECKOUT="$(NIX_ALPINE_CHECKOUT)" NIX_ALPINE_SOURCE_REV="$(NIX_ALPINE_SOURCE_REV)" NIX_ALPINE_SOURCE_DATE="$(NIX_ALPINE_SOURCE_DATE)" NIX_ALPINE_VERSION="$(NIX_ALPINE_VERSION)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" RELEASE_STATE="$(RELEASE_STATE)" STATE_ROOT="$(COREOS_STATE_ROOT)" bash ./bootstrap.sh
 uninstall:
 	SCOPE="$(SCOPE)" CONTAINER="$(CONTAINER)" SERVICE="$(SERVICE)" VOLUME="$(VOLUME)" IMAGE="$(IMAGE)" bash ./uninstall.sh

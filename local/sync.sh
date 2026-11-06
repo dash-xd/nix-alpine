@@ -6,7 +6,8 @@ branch="${2:?Missing branch}"
 workspaces="${3:-$HOME/workspace/nix.xd}"
 checkout_name="${4:-${repo#*/}}"
 revision="${5:-}"
-[[ $# -le 5 ]] || { echo "Too many arguments" >&2; exit 2; }
+expected_root="${6:?Expected canonical nix.xd root is required}"
+[[ $# == 6 ]] || { echo "Usage: sync.sh owner/repo branch workspaces checkout revision nix_xd_root" >&2; exit 2; }
 if [[ -n "$revision" && ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Revision must be a full lowercase commit SHA" >&2
   exit 2
@@ -25,8 +26,10 @@ done
 git check-ref-format --branch "$branch" >/dev/null
 
 name="$checkout_name"
-mkdir -p "$workspaces"
+[[ -d "$workspaces" && -d "$expected_root" ]] || { echo "Workspace root and expected nix.xd root must already exist" >&2; exit 2; }
 workspaces="$(realpath "$workspaces")"
+expected_root="$(realpath "$expected_root")"
+[[ "$workspaces" == "$expected_root" ]] || { echo "Workspace root mismatch: $workspaces (expected $expected_root)" >&2; exit 2; }
 parent="$workspaces"
 for ((i = 0; i < ${#checkout_parts[@]} - 1; i++)); do
   parent="$parent/${checkout_parts[i]}"

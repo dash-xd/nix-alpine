@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-[[ $# == 12 ]] || {
-  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_FLAKE PLAN_TARGET GATE SCOPE ARTIFACT_MANIFEST RETAIN" >&2
+[[ $# == 13 ]] || {
+  echo "usage: $0 IMAGE STORE_VOLUME WORKSPACES NIX_ALPINE_ROOT PLAN_CHECKOUT PLAN_FILE PLAN_FLAKE PLAN_TARGET GATE SCOPE ARTIFACT_MANIFEST RETAIN NIX_XD_ROOT" >&2
   exit 2
 }
 image=$1 volume=$2 workspaces=$3 nix_alpine_root=$4 checkout=$5 plan_file=$6 plan_flake=$7 plan_target=$8 gate=$9 scope=${10}
 artifact_manifest=${11:-}
 retain=${12:-}
+nix_xd_root=${13:?Missing NIX_XD_ROOT}
 [[ "$retain" == 0 || "$retain" == 1 ]] || { echo "RETAIN must be 0 or 1" >&2; exit 2; }
 umask 077
 
@@ -27,7 +28,10 @@ validate_relative_path "$plan_file" || die "PLAN_FILE must be a safe workspace-r
 validate_relative_path "$plan_flake" || die "PLAN_FLAKE must be a safe workspace-relative path"
 [[ "$plan_target" =~ ^[A-Za-z0-9_.-]+$ ]] || die "PLAN_TARGET must be a flake app name without #"
 
+[[ -d "$workspaces" && -d "$nix_xd_root" ]] || die "WORKSPACES and NIX_XD_ROOT must already exist"
 workspaces=$(realpath "$workspaces")
+nix_xd_root=$(realpath "$nix_xd_root")
+[[ "$workspaces" == "$nix_xd_root" ]] || die "WORKSPACES does not resolve to canonical NIX_XD_ROOT"
 nix_alpine_root=$(realpath "$nix_alpine_root")
 nix_alpine_rel=$(realpath --relative-to="$workspaces" "$nix_alpine_root")
 [[ "$nix_alpine_rel" != .. && "$nix_alpine_rel" != ../* ]] || die "Nix-Alpine must be inside WORKSPACES"
