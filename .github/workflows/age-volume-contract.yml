@@ -1,0 +1,29 @@
+name: Age volume bootstrap contract
+on:
+  push:
+    branches: [codex/sops-age-native-bootstrap]
+    paths:
+      - 'local/bootstrap.sh'
+      - 'local/quadlet/nix-alpine.container'
+      - 'local/ensure-age-identity.sh'
+      - 'toolbox/flake.nix'
+      - '.github/workflows/age-volume-contract.yml'
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Canonical rootless identity and access contract
+        run: |
+          set -euo pipefail
+          bash -n local/bootstrap.sh local/ensure-age-identity.sh
+          grep -F 'Volume=@AGE_VOLUME_LINE@' local/quadlet/nix-alpine.container
+          grep -F 'Environment=SOPS_AGE_KEY_FILE=' local/bootstrap.sh
+          grep -F '#security' local/bootstrap.sh
+          grep -F 'NIX_ALPINE_AGE_VOLUME' local/bootstrap.sh
+          grep -F 'NIX_ALPINE_AGE_ACCESS' local/bootstrap.sh
+          grep -F 'age sops' toolbox/flake.nix
+          ! grep -F 'AGE_IDENTITY_SOURCE=' local/bootstrap.sh
+          echo 'PASS: canonical Nix-Alpine owns persistent named age volume and pins security flake'
