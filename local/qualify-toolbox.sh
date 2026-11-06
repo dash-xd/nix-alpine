@@ -52,7 +52,7 @@ podman exec "$CONTAINER" test -e "$store_path" || fail "primary toolbox cannot s
 
 peer="nix-store-peer-$RANDOM-$BASHPID"
 podman run --rm --name "$peer" --userns=keep-id:uid=1000,gid=1000 --network=none \
-  --volume "$VOLUME:/nix" --env "EXPECTED_STORE_PATH=$store_path" "${nix_env[@]}" \
+  --volume "$VOLUME:/nix:nocopy" --env "EXPECTED_STORE_PATH=$store_path" "${nix_env[@]}" \
   --entrypoint /bin/bash "$IMAGE" -c \
   'test -e "$EXPECTED_STORE_PATH" && command -v nix >/dev/null && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
 printf 'PASS: a second rootless Podman container used the same Nix store volume (%s)\n' "$VOLUME"
@@ -61,20 +61,23 @@ probe="nix.xd-qualify-$RANDOM-$BASHPID"
 podman volume create --opt "o=uid=$(id -u),gid=$(id -g)" "$probe" >/dev/null
 cleanup_probe() { podman volume rm "$probe" >/dev/null 2>&1 || true; }
 trap cleanup_probe EXIT
+
+podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
+  --volume "$probe:/shared/nix:nocopy" --entrypoint /bin/sh "$IMAGE" -c \
+  'printf "%s\\n" "preexisting-store-sentinel" > /shared/nix/.nix.xd-volume-sentinel'
 bash "$SCRIPT_DIR/seed-store-volume.sh" "$IMAGE" "$probe"
 
+probe_profile="$(podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
+  --volume "$probe:/nix:nocopy" "$IMAGE" /bin/sh -c 'readlink -f "$HOME/.nix-profile"')"
+[[ "$probe_profile" == /nix/store/* ]] || fail "image profile did not resolve to a Nix store path: $probe_profile"
 probe_version="$(podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
-  --volume "$probe:/nix" "${nix_env[@]}" "$IMAGE" nix --version)"
-[[ "$probe_version" == "$nix_version" ]] || fail "fresh-volume Nix version mismatch: expected $nix_version, got $probe_version"
-fresh_path="$(podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
-  --volume "$probe:/nix" "${nix_env[@]}" "$IMAGE" nix eval --raw --impure \
-  --expr 'builtins.toFile "nix-alpine-fresh-store-smoke" "fresh-store-shared"')"
-[[ "$fresh_path" == /nix/store/* ]] || fail "fresh volume returned an invalid store path: $fresh_path"
+  --volume "$probe:/nix:nocopy" "${nix_env[@]}" "$IMAGE" nix --version)"
+[[ "$probe_version" == "$nix_version" ]] || fail "existing-volume Nix version mismatch: expected $nix_version, got $probe_version"
 podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
-  --volume "$probe:/nix" --env "EXPECTED_STORE_PATH=$fresh_path" "${nix_env[@]}" \
+  --volume "$probe:/nix:nocopy" --env "EXPECTED_PROFILE=$probe_profile" \
   --entrypoint /bin/bash "$IMAGE" -c \
-  'test -e "$EXPECTED_STORE_PATH" && command -v nix >/dev/null && nix path-info "$EXPECTED_STORE_PATH" >/dev/null'
-printf 'PASS: empty Nix store volume initialized and shared by a second rootless container\n'
+  'test "$(cat /nix/.nix.xd-volume-sentinel)" = preexisting-store-sentinel && test -e "$EXPECTED_PROFILE" && test -x "$HOME/.nix-profile/bin/nix" && nix path-info "$EXPECTED_PROFILE" >/dev/null'
+printf 'PASS: pre-existing nonempty Nix volume was explicitly seeded and usable from a second rootless container\n'
 podman volume rm "$probe" >/dev/null
 trap - EXIT
 printf 'PASS: toolbox qualification completed\n'
