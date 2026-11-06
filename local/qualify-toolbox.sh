@@ -58,7 +58,7 @@ podman run --rm --name "$peer" --userns=keep-id:uid=1000,gid=1000 --network=none
 printf 'PASS: a second rootless Podman container used the same Nix store volume (%s)\n' "$VOLUME"
 
 probe="nix.xd-qualify-$RANDOM-$BASHPID"
-podman volume create --uid 1000 --gid 1000 "$probe" >/dev/null
+podman volume create --opt uid=1000 --opt gid=1000 "$probe" >/dev/null
 cleanup_probe() { podman volume rm "$probe" >/dev/null 2>&1 || true; }
 trap cleanup_probe EXIT
 
