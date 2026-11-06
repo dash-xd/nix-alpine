@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n local/bootstrap.sh local/ensure-age-identity.sh
-          grep -F 'Volume=@AGE_VOLUME_LINE@' local/quadlet/nix-alpine.container
+          grep -Fx '@AGE_VOLUME_LINE@' local/quadlet/nix-alpine.container
           grep -F 'Environment=SOPS_AGE_KEY_FILE=' local/bootstrap.sh
           grep -F '#security' local/bootstrap.sh
           grep -F 'NIX_ALPINE_AGE_VOLUME' local/bootstrap.sh
