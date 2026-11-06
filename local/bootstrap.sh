@@ -24,6 +24,7 @@ IMAGE="${IMAGE:-localhost/nix.xd:$NIX_ALPINE_VERSION}"
 RELEASE_STATE="${RELEASE_STATE:-$NIX_ALPINE_STATE_ROOT/releases}"
 STATE_ROOT="${STATE_ROOT:-$NIX_ALPINE_STATE_ROOT/coreos-qemu}"
 QUADLET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+die() { echo "ERROR: $*" >&2; exit 1; }
 WORKSPACE_ACCESS="${NIX_ALPINE_WORKSPACE_ACCESS:-rw}"
 AGE_IDENTITY_SOURCE="${NIX_ALPINE_SOPS_AGE_SOURCE:-}"
 [[ "$WORKSPACE_ACCESS" == rw || "$WORKSPACE_ACCESS" == ro ]] || die "Invalid workspace access"
@@ -48,7 +49,7 @@ else
   XDG_CACHE_DIR=/home/nixuser/.cache
 fi
 
-die() { echo "ERROR: $*" >&2; exit 1; }
+
 log() { printf '\n==> %s\n' "$*"; }
 for cmd in git podman systemctl realpath; do command -v "$cmd" >/dev/null || die "Missing: $cmd"; done
 [[ "$SCOPE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "Invalid scope"
