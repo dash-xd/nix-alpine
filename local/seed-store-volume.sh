@@ -4,7 +4,13 @@ set -Eeuo pipefail
 PASS_MARKER="PASS: image Nix profile closure seeded into shared store"
 
 if [[ "${1:-}" == --inside ]]; then
-  [[ -w /shared/nix ]] || { echo "Shared Nix volume is not writable by the mapped toolbox user" >&2; exit 1; }
+  if [[ ! -w /shared/nix ]]; then
+    printf 'Seeder identity: ' >&2
+    id >&2
+    stat -c 'Shared volume owner=%u:%g mode=%a path=%n' /shared/nix >&2
+    echo "Shared Nix volume is not writable by the mapped toolbox user" >&2
+    exit 1
+  fi
   profile="$(readlink -f "$HOME/.nix-profile")"
   [[ "$profile" == /nix/store/* && -d "$profile" ]] || {
     echo "Current image Nix profile is not a valid store path: $profile" >&2
