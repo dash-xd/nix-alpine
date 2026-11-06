@@ -64,7 +64,7 @@ trap cleanup_probe EXIT
 
 podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
   --volume "$probe:/shared/nix:nocopy" --entrypoint /bin/sh "$IMAGE" -c \
-  'printf "%s\\n" "preexisting-store-sentinel" > /shared/nix/.nix.xd-volume-sentinel'
+  'printf preexisting-store-sentinel > /shared/nix/.nix.xd-volume-sentinel'
 bash "$SCRIPT_DIR/seed-store-volume.sh" "$IMAGE" "$probe"
 
 probe_profile="$(podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
