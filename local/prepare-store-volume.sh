@@ -12,7 +12,12 @@ podman run --rm --network=none \
   --entrypoint /bin/sh "$IMAGE" -c '
     uid="$(id -u nixuser)"
     gid="$(id -g nixuser)"
-    chown "$uid:$gid" /shared/nix
-    test -w /shared/nix
-    printf "PASS: shared Nix volume root prepared for toolbox uid:gid %s:%s\\n" "$uid" "$gid"
+    for path in /shared/nix /shared/nix/store /shared/nix/var /shared/nix/var/nix /shared/nix/var/nix/db; do
+      mkdir -p "$path"
+      chown "$uid:$gid" "$path"
+    done
+    for path in /shared/nix /shared/nix/store /shared/nix/var/nix/db; do
+      test -w "$path"
+    done
+    printf "PASS: shared Nix store directories prepared for toolbox uid:gid %s:%s\\n" "$uid" "$gid"
   '
