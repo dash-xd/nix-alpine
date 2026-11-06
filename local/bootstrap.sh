@@ -112,8 +112,10 @@ if [[ -n "$AGE_VOLUME" ]]; then
     podman volume exists "$AGE_VOLUME" || podman volume create "$AGE_VOLUME" >/dev/null
     # The scoped bootstrap runner prepares its own volume once, without
     # touching existing identities or the unrelated Nix store.
-    podman run --rm --user 0 -v "$AGE_VOLUME:/run/secrets/age:rw" "$IMAGE" \
-      chown 1000:1000 /run/secrets/age
+    podman run --rm --network=none --userns=keep-id:uid=1000,gid=1000 \
+      --user 0:0 -v "$AGE_VOLUME:/run/secrets/age:nocopy" \
+      --entrypoint /bin/sh "$IMAGE" -c \
+      'chown 1000:1000 /run/secrets/age && test -w /run/secrets/age'
   else
     podman volume exists "$AGE_VOLUME" || die "Reader requested a nonexistent age identity volume"
   fi
