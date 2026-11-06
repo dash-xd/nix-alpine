@@ -18,7 +18,7 @@ if [[ "${1:-}" == --inside ]]; then
   }
 
   echo "Merging image profile closure into the existing shared Nix store"
-  nix copy --to "local?root=/shared" "$profile"
+  nix copy --no-check-sigs --to "local?root=/shared" "$profile"
   test -e "/shared/nix/store/${profile#/nix/store/}"
   nix path-info --store "local?root=/shared" "$profile" >/dev/null
   echo "$PASS_MARKER"
