@@ -93,7 +93,7 @@ while IFS=$'\t' read -r component repo revision checkout extra || [[ -n "${compo
   fetch_refs+=("refs/nix-alpine/plan-sources/$component")
 done < "$manifest"
 
-( ${#components[@]} > 0 ) || { echo "Source manifest has no source rows" >&2; exit 2; }
+(( ${#components[@]} > 0 )) || { echo "Source manifest has no source rows" >&2; exit 2; }
 
 # Fetch every pinned object before changing any checked-out worktree.
 for i in "${!components[@]}"; do
