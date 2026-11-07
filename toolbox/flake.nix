@@ -34,7 +34,7 @@
         in {
           default = pkgs.mkShell { packages = base; };
           go = pkgs.mkShell { packages = base ++ goTools; };
-          security = pkgs.mkShell { packages = base ++ goTools ++ (with pkgs; [ age sops ]); };
+          security = pkgs.mkShell { packages = base ++ goTools ++ (with pkgs; [ age sops gh ]); };
           integration = pkgs.mkShell {
             packages = base ++ goTools ++ (with pkgs; [ redis ]);
           };
